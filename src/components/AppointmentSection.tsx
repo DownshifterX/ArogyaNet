@@ -3,10 +3,27 @@ import { useInView } from "framer-motion";
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar, Clock, Video, MapPin } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
 
 const AppointmentSection = () => {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleBookAppointment = () => {
+    if (!user) {
+      navigate("/auth");
+    } else {
+      toast({
+        title: "Appointment Booking",
+        description: "Redirecting to appointment booking page...",
+      });
+    }
+  };
 
   const steps = [
     {
@@ -109,9 +126,10 @@ const AppointmentSection = () => {
         >
           <Button
             size="lg"
+            onClick={handleBookAppointment}
             className="group bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all duration-300"
           >
-            Book Your Appointment Now
+            {user ? "Book Your Appointment Now" : "Sign In to Book Appointment"}
             <Calendar className="ml-2 group-hover:scale-110 transition-transform" />
           </Button>
         </motion.div>

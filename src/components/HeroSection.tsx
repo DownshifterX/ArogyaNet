@@ -1,8 +1,22 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Heart, Shield, Zap, Activity } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 const HeroSection = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleGetStarted = () => {
+    if (!user) {
+      navigate("/auth");
+    } else {
+      // Scroll to features if already logged in
+      document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <section
       id="hero"
@@ -88,9 +102,10 @@ const HeroSection = () => {
             >
               <Button
                 size="lg"
+                onClick={handleGetStarted}
                 className="group bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all duration-300"
               >
-                Get Started
+                {user ? "Explore Features" : "Get Started"}
                 <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button size="lg" variant="outline" className="hover:bg-secondary">

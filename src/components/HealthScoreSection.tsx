@@ -3,10 +3,27 @@ import { useInView } from "framer-motion";
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Activity, Heart, Brain, TrendingUp } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
 
 const HealthScoreSection = () => {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const handleCalculateScore = () => {
+    if (!user) {
+      navigate("/auth");
+    } else {
+      toast({
+        title: "Health Score Calculator",
+        description: "Redirecting to health score calculator...",
+      });
+    }
+  };
 
   const metrics = [
     {
@@ -114,9 +131,10 @@ const HealthScoreSection = () => {
 
             <Button
               size="lg"
+              onClick={handleCalculateScore}
               className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all duration-300"
             >
-              Calculate Your Score
+              {user ? "Calculate Your Score" : "Sign In to Calculate"}
             </Button>
           </motion.div>
 

@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Activity } from "lucide-react";
+import { Menu, X, Activity, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -67,6 +71,24 @@ const Navbar = () => {
                 {item.label}
               </motion.button>
             ))}
+            
+            {user ? (
+              <Button
+                onClick={signOut}
+                variant="outline"
+                className="gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </Button>
+            ) : (
+              <Button
+                onClick={() => navigate("/auth")}
+                className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all"
+              >
+                Login / Sign Up
+              </Button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -95,6 +117,24 @@ const Navbar = () => {
                 {item.label}
               </button>
             ))}
+            
+            {user ? (
+              <Button
+                onClick={signOut}
+                variant="outline"
+                className="w-full mt-2 gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </Button>
+            ) : (
+              <Button
+                onClick={() => navigate("/auth")}
+                className="w-full mt-2 bg-gradient-to-r from-primary to-accent"
+              >
+                Login / Sign Up
+              </Button>
+            )}
           </motion.div>
         )}
       </div>
