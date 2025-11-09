@@ -26,9 +26,16 @@ serve(async (req) => {
 
     if (downloadError) throw downloadError;
 
-    // Convert PDF to base64
+    // Convert PDF to base64 (chunked to avoid stack overflow)
     const buffer = await fileData.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.slice(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    const base64 = btoa(binary);
 
     // Call Lovable AI Gateway with gemini-2.5-flash-lite (uses 0.1 credit)
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
