@@ -18,10 +18,7 @@ const AppointmentSection = () => {
     if (!user) {
       navigate("/auth");
     } else {
-      toast({
-        title: "Appointment Booking",
-        description: "Redirecting to appointment booking page...",
-      });
+      navigate("/book-appointment");
     }
   };
 

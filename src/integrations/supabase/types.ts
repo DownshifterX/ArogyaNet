@@ -50,6 +50,42 @@ export type Database = {
         }
         Relationships: []
       }
+      health_records: {
+        Row: {
+          analysis_result: Json | null
+          analysis_status: string | null
+          file_name: string
+          file_path: string
+          health_score: number | null
+          id: string
+          processed_at: string | null
+          uploaded_at: string | null
+          user_id: string
+        }
+        Insert: {
+          analysis_result?: Json | null
+          analysis_status?: string | null
+          file_name: string
+          file_path: string
+          health_score?: number | null
+          id?: string
+          processed_at?: string | null
+          uploaded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          analysis_result?: Json | null
+          analysis_status?: string | null
+          file_name?: string
+          file_path?: string
+          health_score?: number | null
+          id?: string
+          processed_at?: string | null
+          uploaded_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       prescriptions: {
         Row: {
           created_at: string
