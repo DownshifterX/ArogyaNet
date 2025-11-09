@@ -1,15 +1,25 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Activity, LogOut } from "lucide-react";
+import { Menu, X, Activity, LogOut, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, signOut } = useAuth();
+  const { user, userRole, signOut } = useAuth();
   const navigate = useNavigate();
+
+  const handleDashboardClick = () => {
+    if (userRole === "doctor") {
+      navigate("/doctor-dashboard");
+    } else if (userRole === "patient") {
+      navigate("/patient-dashboard");
+    } else if (userRole === "admin") {
+      navigate("/admin-panel");
+    }
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -73,14 +83,24 @@ const Navbar = () => {
             ))}
             
             {user ? (
-              <Button
-                onClick={signOut}
-                variant="outline"
-                className="gap-2"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </Button>
+              <>
+                <Button
+                  onClick={handleDashboardClick}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </Button>
+                <Button
+                  onClick={signOut}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </Button>
+              </>
             ) : (
               <Button
                 onClick={() => navigate("/auth")}
@@ -119,14 +139,24 @@ const Navbar = () => {
             ))}
             
             {user ? (
-              <Button
-                onClick={signOut}
-                variant="outline"
-                className="w-full mt-2 gap-2"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </Button>
+              <>
+                <Button
+                  onClick={handleDashboardClick}
+                  variant="outline"
+                  className="w-full mt-2 gap-2"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </Button>
+                <Button
+                  onClick={signOut}
+                  variant="outline"
+                  className="w-full mt-2 gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </Button>
+              </>
             ) : (
               <Button
                 onClick={() => navigate("/auth")}
