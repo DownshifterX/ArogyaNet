@@ -25,7 +25,14 @@ const App = () => (
           <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/book-appointment" element={<BookAppointment />} />
+        <Route 
+          path="/book-appointment" 
+          element={
+            <ProtectedRoute allowedRoles={["patient"]}>
+              <BookAppointment />
+            </ProtectedRoute>
+          } 
+        />
         <Route
           path="/doctor-dashboard"
           element={

@@ -24,12 +24,8 @@ const BookAppointment = () => {
   });
 
   useEffect(() => {
-    if (!user) {
-      navigate("/auth");
-      return;
-    }
     fetchDoctors();
-  }, [user, navigate]);
+  }, []);
 
   const fetchDoctors = async () => {
     const { data: doctorRoles } = await supabase
