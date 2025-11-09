@@ -1,1 +1,7 @@
 project_id = "kdnjaygncmyobotnldfh"
+
+[functions.analyze-health-record]
+verify_jwt = false
+
+[functions.import-patients]
+verify_jwt = true

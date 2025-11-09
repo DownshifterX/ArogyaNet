@@ -7,8 +7,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Users, Calendar, FileText, ArrowLeft, Shield } from "lucide-react";
+import { Users, Calendar, FileText, ArrowLeft, Shield, Database } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import PatientImport from "@/components/PatientImport";
+import PatientList from "@/components/PatientList";
 
 export default function AdminPanel() {
   const { user } = useAuth();
@@ -159,7 +161,7 @@ export default function AdminPanel() {
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-2xl grid-cols-4">
             <TabsTrigger value="users">
               <Users className="mr-2 h-4 w-4" />
               Users
@@ -171,6 +173,10 @@ export default function AdminPanel() {
             <TabsTrigger value="prescriptions">
               <FileText className="mr-2 h-4 w-4" />
               Prescriptions
+            </TabsTrigger>
+            <TabsTrigger value="patients">
+              <Database className="mr-2 h-4 w-4" />
+              Patients
             </TabsTrigger>
           </TabsList>
 
@@ -306,6 +312,13 @@ export default function AdminPanel() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="patients">
+            <div className="space-y-6">
+              <PatientImport />
+              <PatientList />
+            </div>
           </TabsContent>
         </Tabs>
       </div>
