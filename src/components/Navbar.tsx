@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Activity, LogOut, LayoutDashboard } from "lucide-react";
+import { Menu, X, Activity, LogOut, LayoutDashboard, Calendar } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -84,6 +84,15 @@ const Navbar = () => {
             
             {user ? (
               <>
+                {userRole === "patient" && (
+                  <Button
+                    onClick={() => navigate("/book-appointment")}
+                    className="gap-2 bg-gradient-to-r from-primary to-accent"
+                  >
+                    <Calendar className="w-4 h-4" />
+                    Book Appointment
+                  </Button>
+                )}
                 <Button
                   onClick={handleDashboardClick}
                   variant="outline"
@@ -140,6 +149,15 @@ const Navbar = () => {
             
             {user ? (
               <>
+                {userRole === "patient" && (
+                  <Button
+                    onClick={() => navigate("/book-appointment")}
+                    className="w-full mt-2 gap-2 bg-gradient-to-r from-primary to-accent"
+                  >
+                    <Calendar className="w-4 h-4" />
+                    Book Appointment
+                  </Button>
+                )}
                 <Button
                   onClick={handleDashboardClick}
                   variant="outline"

@@ -10,6 +10,7 @@ import Auth from "./pages/Auth";
 import DoctorDashboard from "./pages/DoctorDashboard";
 import PatientDashboard from "./pages/PatientDashboard";
 import AdminPanel from "./pages/AdminPanel";
+import BookAppointment from "./pages/BookAppointment";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,14 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <AdminPanel />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/book-appointment"
+              element={
+                <ProtectedRoute allowedRoles={["patient"]}>
+                  <BookAppointment />
                 </ProtectedRoute>
               }
             />
