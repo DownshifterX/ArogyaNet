@@ -78,6 +78,23 @@ const BookAppointment = () => {
 
       if (error) throw error;
 
+      // Send notification via edge function
+      try {
+        await supabase.functions.invoke('send-appointment-notification', {
+          body: {
+            appointmentId: new Date().getTime().toString(),
+            patientId: user!.id,
+            doctorId: formData.doctor_id,
+            appointmentDate: format(date, "yyyy-MM-dd"),
+            appointmentTime: formData.appointment_time,
+            notes: formData.notes,
+          },
+        });
+      } catch (notificationError) {
+        console.error('Notification error:', notificationError);
+        // Don't block the user flow if notification fails
+      }
+
       toast({
         title: "Success",
         description: "Your appointment has been booked successfully!",
