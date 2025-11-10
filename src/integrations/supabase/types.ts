@@ -52,124 +52,37 @@ export type Database = {
       }
       health_records: {
         Row: {
-          ag_ratio: number | null
-          age: number | null
-          albumin: number | null
-          alkaline_phosphotase: number | null
           analysis_result: Json | null
           analysis_status: string | null
-          direct_bilirubin: number | null
           file_name: string
           file_path: string
-          gender: string | null
           health_score: number | null
           id: string
-          liver_risk_score: number | null
           processed_at: string | null
-          sgot_aspartate: number | null
-          sgpt_alamine: number | null
-          total_bilirubin: number | null
-          total_proteins: number | null
           uploaded_at: string | null
           user_id: string
         }
         Insert: {
-          ag_ratio?: number | null
-          age?: number | null
-          albumin?: number | null
-          alkaline_phosphotase?: number | null
           analysis_result?: Json | null
           analysis_status?: string | null
-          direct_bilirubin?: number | null
           file_name: string
           file_path: string
-          gender?: string | null
           health_score?: number | null
           id?: string
-          liver_risk_score?: number | null
           processed_at?: string | null
-          sgot_aspartate?: number | null
-          sgpt_alamine?: number | null
-          total_bilirubin?: number | null
-          total_proteins?: number | null
           uploaded_at?: string | null
           user_id: string
         }
         Update: {
-          ag_ratio?: number | null
-          age?: number | null
-          albumin?: number | null
-          alkaline_phosphotase?: number | null
           analysis_result?: Json | null
           analysis_status?: string | null
-          direct_bilirubin?: number | null
           file_name?: string
           file_path?: string
-          gender?: string | null
           health_score?: number | null
           id?: string
-          liver_risk_score?: number | null
           processed_at?: string | null
-          sgot_aspartate?: number | null
-          sgpt_alamine?: number | null
-          total_bilirubin?: number | null
-          total_proteins?: number | null
           uploaded_at?: string | null
           user_id?: string
-        }
-        Relationships: []
-      }
-      patients: {
-        Row: {
-          ag_ratio: number | null
-          age: number | null
-          albumin: number | null
-          alkaline_phosphotase: number | null
-          created_at: string | null
-          direct_bilirubin: number | null
-          gender: string | null
-          id: string
-          liver_risk_score: number | null
-          result: number | null
-          sgot_aspartate: number | null
-          sgpt_alamine: number | null
-          total_bilirubin: number | null
-          total_proteins: number | null
-          updated_at: string | null
-        }
-        Insert: {
-          ag_ratio?: number | null
-          age?: number | null
-          albumin?: number | null
-          alkaline_phosphotase?: number | null
-          created_at?: string | null
-          direct_bilirubin?: number | null
-          gender?: string | null
-          id?: string
-          liver_risk_score?: number | null
-          result?: number | null
-          sgot_aspartate?: number | null
-          sgpt_alamine?: number | null
-          total_bilirubin?: number | null
-          total_proteins?: number | null
-          updated_at?: string | null
-        }
-        Update: {
-          ag_ratio?: number | null
-          age?: number | null
-          albumin?: number | null
-          alkaline_phosphotase?: number | null
-          created_at?: string | null
-          direct_bilirubin?: number | null
-          gender?: string | null
-          id?: string
-          liver_risk_score?: number | null
-          result?: number | null
-          sgot_aspartate?: number | null
-          sgpt_alamine?: number | null
-          total_bilirubin?: number | null
-          total_proteins?: number | null
-          updated_at?: string | null
         }
         Relationships: []
       }

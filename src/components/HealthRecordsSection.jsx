@@ -17,11 +17,6 @@ const HealthRecordsSection = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  // STORAGE CONFIGURATION:
-  // PDFs are stored in Supabase Cloud Storage (bucket: 'health-records')
-  // Path format: {user_id}/{filename}
-  // For local file storage, see BACKEND_DOCUMENTATION.md
-
   const handleUpload = async (event) => {
     if (!user) {
       navigate("/auth");

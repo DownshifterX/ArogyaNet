@@ -13,9 +13,9 @@ import { useNavigate } from "react-router-dom";
 export default function AdminPanel() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [users, setUsers] = useState([]);
-  const [appointments, setAppointments] = useState([]);
-  const [prescriptions, setPrescriptions] = useState([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,14 +74,14 @@ export default function AdminPanel() {
 
       if (prescError) throw prescError;
       setPrescriptions(prescData || []);
-    } catch (error) {
+    } catch (error: any) {
       toast.error("Failed to load data: " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const updateUserRole = async (userId, roleId, newRole) => {
+  const updateUserRole = async (userId: string, roleId: string, newRole: "patient" | "doctor" | "admin") => {
     try {
       const { error } = await supabase
         .from("user_roles")
@@ -91,7 +91,7 @@ export default function AdminPanel() {
       if (error) throw error;
       toast.success("User role updated successfully");
       fetchAdminData();
-    } catch (error) {
+    } catch (error: any) {
       toast.error("Failed to update role: " + error.message);
     }
   };
@@ -208,7 +208,7 @@ export default function AdminPanel() {
                           <Select
                             value={user.role}
                             onValueChange={(value) =>
-                              updateUserRole(user.user_id, user.role_id, value)
+                              updateUserRole(user.user_id, user.role_id, value as "patient" | "doctor" | "admin")
                             }
                           >
                             <SelectTrigger className="w-32">
