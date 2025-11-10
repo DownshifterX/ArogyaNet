@@ -40,7 +40,7 @@ const Navbar = () => {
   const navItems = [
     { label: "Help", id: "help" },
     { label: "Book Appointment", id: "appointment" },
-    { label: "Calculate Health Score", id: "health-score" },
+    { label: "Upload Documents", id: "upload-documents" },
   ];
 
   return (

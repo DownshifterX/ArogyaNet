@@ -35,48 +35,73 @@ export default function DoctorDashboard() {
 
   const fetchDoctorData = async () => {
     try {
-      // Fetch appointments
+      // Fetch appointments with manual name fetching
       const { data: apptData, error: apptError } = await supabase
         .from("appointments")
-        .select(`
-          *,
-          patient:profiles!appointments_patient_id_fkey(full_name, phone)
-        `)
         .eq("doctor_id", user?.id)
+        .select("*")
         .order("appointment_date", { ascending: true });
 
-      if (apptError) throw apptError;
-      setAppointments(apptData || []);
+      if (apptError) {
+        console.error('Appointments error:', apptError);
+      } else if (apptData) {
+        // Fetch patient names separately
+        const appointmentsWithPatients = await Promise.all(
+          apptData.map(async (apt) => {
+            const { data: patientData } = await supabase
+              .from("profiles")
+              .select("full_name, phone")
+              .eq("user_id", apt.patient_id)
+              .maybeSingle();
+            return {
+              ...apt,
+              patient: patientData
+            };
+          })
+        );
+        setAppointments(appointmentsWithPatients);
 
-      // Fetch unique patients from appointments
-      const uniquePatients = [];
-      const seenIds = new Set();
-      
-      apptData?.forEach((apt) => {
-        if (!seenIds.has(apt.patient_id) && apt.patient) {
-          seenIds.add(apt.patient_id);
-          uniquePatients.push({
-            id: apt.patient_id,
-            full_name: apt.patient.full_name,
-            phone: apt.patient.phone
-          });
-        }
-      });
-      
-      setPatients(uniquePatients);
+        // Extract unique patients
+        const uniquePatients = [];
+        const seenIds = new Set();
+        appointmentsWithPatients.forEach((apt) => {
+          if (!seenIds.has(apt.patient_id) && apt.patient) {
+            seenIds.add(apt.patient_id);
+            uniquePatients.push({
+              id: apt.patient_id,
+              full_name: apt.patient.full_name,
+              phone: apt.patient.phone
+            });
+          }
+        });
+        setPatients(uniquePatients);
+      }
 
-      // Fetch prescriptions
+      // Fetch prescriptions with manual name fetching
       const { data: prescData, error: prescError } = await supabase
         .from("prescriptions")
-        .select(`
-          *,
-          patient:profiles!prescriptions_patient_id_fkey(full_name)
-        `)
         .eq("doctor_id", user?.id)
+        .select("*")
         .order("prescribed_date", { ascending: false });
 
-      if (prescError) throw prescError;
-      setPrescriptions(prescData || []);
+      if (prescError) {
+        console.error('Prescriptions error:', prescError);
+      } else if (prescData) {
+        const prescriptionsWithPatients = await Promise.all(
+          prescData.map(async (presc) => {
+            const { data: patientData } = await supabase
+              .from("profiles")
+              .select("full_name")
+              .eq("user_id", presc.patient_id)
+              .maybeSingle();
+            return {
+              ...presc,
+              patient: patientData
+            };
+          })
+        );
+        setPrescriptions(prescriptionsWithPatients);
+      }
     } catch (error) {
       toast.error("Failed to load data: " + error.message);
     } finally {

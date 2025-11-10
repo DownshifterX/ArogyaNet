@@ -34,31 +34,57 @@ export default function PatientDashboard() {
 
   const fetchPatientData = async () => {
     try {
-      // Fetch appointments
+      // Fetch appointments with manual name fetching
       const { data: apptData, error: apptError } = await supabase
         .from("appointments")
-        .select(`
-          *,
-          doctor:profiles!appointments_doctor_id_fkey(full_name, phone)
-        `)
         .eq("patient_id", user?.id)
+        .select("*")
         .order("appointment_date", { ascending: true });
 
-      if (apptError) throw apptError;
-      setAppointments(apptData || []);
+      if (apptError) {
+        console.error('Appointments error:', apptError);
+      } else if (apptData) {
+        const appointmentsWithDoctors = await Promise.all(
+          apptData.map(async (apt) => {
+            const { data: doctorData } = await supabase
+              .from("profiles")
+              .select("full_name, phone")
+              .eq("user_id", apt.doctor_id)
+              .maybeSingle();
+            return {
+              ...apt,
+              doctor: doctorData
+            };
+          })
+        );
+        setAppointments(appointmentsWithDoctors);
+      }
 
-      // Fetch prescriptions
+      // Fetch prescriptions with manual name fetching
       const { data: prescData, error: prescError } = await supabase
         .from("prescriptions")
-        .select(`
-          *,
-          doctor:profiles!prescriptions_doctor_id_fkey(full_name)
-        `)
         .eq("patient_id", user?.id)
+        .select("*")
         .order("prescribed_date", { ascending: false });
 
-      if (prescError) throw prescError;
-      setPrescriptions(prescData || []);
+      if (prescError) {
+        console.error('Prescriptions error:', prescError);
+      } else if (prescData) {
+        const prescriptionsWithDoctors = await Promise.all(
+          prescData.map(async (presc) => {
+            const { data: doctorData } = await supabase
+              .from("profiles")
+              .select("full_name")
+              .eq("user_id", presc.doctor_id)
+              .maybeSingle();
+            return {
+              ...presc,
+              doctor: doctorData
+            };
+          })
+        );
+        setPrescriptions(prescriptionsWithDoctors);
+      }
 
       // Fetch doctors (users with doctor role)
       const { data: doctorRoles, error: doctorError } = await supabase
