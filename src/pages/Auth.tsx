@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Activity, Mail, Lock, User, ArrowLeft } from "lucide-react";
+import { Activity, Mail, Lock, User as UserIcon, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
+import { User } from "@supabase/supabase-js";
 import WelcomeAnimation from "@/components/WelcomeAnimation";
 
 const authSchema = z.object({
@@ -26,6 +27,7 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<UserRole>("patient");
+  const [welcomeUser, setWelcomeUser] = useState<User | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -53,13 +55,14 @@ const Auth = () => {
       authSchema.parse(validationData);
 
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) throw error;
 
+        setWelcomeUser(data.user);
         setShowWelcome(true);
       } else {
         const detectedRole = detectRoleFromEmail(email);
@@ -83,6 +86,9 @@ const Auth = () => {
           description: `Welcome to ArogyaNet as a ${detectedRole}`,
         });
 
+        // Get the newly created user
+        const { data: { user: newUser } } = await supabase.auth.getUser();
+        setWelcomeUser(newUser);
         setShowWelcome(true);
       }
     } catch (error: any) {
@@ -104,12 +110,40 @@ const Auth = () => {
     }
   };
 
-  const handleWelcomeComplete = () => {
+  const handleWelcomeComplete = async () => {
     setShowWelcome(false);
-    navigate("/");
+    
+    // Fetch user role to redirect appropriately
+    if (welcomeUser) {
+      try {
+        const { data: roleData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", welcomeUser.id)
+          .single();
+        
+        const userRole = roleData?.role;
+        
+        // Redirect based on role
+        if (userRole === "admin") {
+          navigate("/admin-panel");
+        } else if (userRole === "doctor") {
+          navigate("/doctor-dashboard");
+        } else if (userRole === "patient") {
+          navigate("/patient-dashboard");
+        } else {
+          navigate("/");
+        }
+      } catch (error) {
+        console.error("Error fetching role:", error);
+        navigate("/");
+      }
+    } else {
+      navigate("/");
+    }
   };
 
-  if (showWelcome) {
+  if (showWelcome && welcomeUser) {
     return <WelcomeAnimation onComplete={handleWelcomeComplete} />;
   }
 
@@ -181,7 +215,7 @@ const Auth = () => {
               >
                 <Label htmlFor="fullName">Full Name</Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                  <UserIcon className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                   <Input
                     id="fullName"
                     type="text"
