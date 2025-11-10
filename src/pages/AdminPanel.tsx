@@ -49,32 +49,63 @@ export default function AdminPanel() {
 
       setUsers(combinedUsers);
 
-      // Fetch all appointments
+      // Fetch all appointments with patient and doctor names
       const { data: apptData, error: apptError } = await supabase
         .from("appointments")
-        .select(`
-          *,
-          patient:profiles!appointments_patient_id_fkey(full_name),
-          doctor:profiles!appointments_doctor_id_fkey(full_name)
-        `)
+        .select("*")
         .order("appointment_date", { ascending: false });
 
-      if (apptError) throw apptError;
-      setAppointments(apptData || []);
+      if (apptError) {
+        console.error('Appointments fetch error:', apptError);
+        toast.error("Failed to load appointments: " + apptError.message);
+      } else {
+        // Manually fetch patient and doctor names for each appointment
+        const appointmentsWithNames = await Promise.all(
+          (apptData || []).map(async (apt) => {
+            const [patientResult, doctorResult] = await Promise.all([
+              supabase.from("profiles").select("full_name").eq("user_id", apt.patient_id).single(),
+              supabase.from("profiles").select("full_name").eq("user_id", apt.doctor_id).single()
+            ]);
 
-      // Fetch all prescriptions
+            return {
+              ...apt,
+              patient: patientResult.data,
+              doctor: doctorResult.data
+            };
+          })
+        );
+        setAppointments(appointmentsWithNames);
+      }
+
+      // Fetch all prescriptions with patient and doctor names
       const { data: prescData, error: prescError } = await supabase
         .from("prescriptions")
-        .select(`
-          *,
-          patient:profiles!prescriptions_patient_id_fkey(full_name),
-          doctor:profiles!prescriptions_doctor_id_fkey(full_name)
-        `)
+        .select("*")
         .order("prescribed_date", { ascending: false });
 
-      if (prescError) throw prescError;
-      setPrescriptions(prescData || []);
+      if (prescError) {
+        console.error('Prescriptions fetch error:', prescError);
+        toast.error("Failed to load prescriptions: " + prescError.message);
+      } else {
+        // Manually fetch patient and doctor names for each prescription
+        const prescriptionsWithNames = await Promise.all(
+          (prescData || []).map(async (presc) => {
+            const [patientResult, doctorResult] = await Promise.all([
+              supabase.from("profiles").select("full_name").eq("user_id", presc.patient_id).maybeSingle(),
+              supabase.from("profiles").select("full_name").eq("user_id", presc.doctor_id).maybeSingle()
+            ]);
+
+            return {
+              ...presc,
+              patient: patientResult.data,
+              doctor: doctorResult.data
+            };
+          })
+        );
+        setPrescriptions(prescriptionsWithNames);
+      }
     } catch (error: any) {
+      console.error('Admin data fetch error:', error);
       toast.error("Failed to load data: " + error.message);
     } finally {
       setLoading(false);
