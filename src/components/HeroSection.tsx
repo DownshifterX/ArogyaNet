@@ -77,10 +77,22 @@ const HeroSection = () => {
               transition={{ delay: 0.3 }}
               className="text-5xl md:text-7xl font-bold leading-tight"
             >
-              Welcome to{" "}
-              <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-                ArogyaNet
-              </span>
+              {user ? (
+                <>
+                  Hello {user.role === "doctor" ? "Doctor" : user.role === "admin" ? "Admin" : "Patient"},{" "}
+                  <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
+                    {user.name || "Guest"}
+                  </span>
+                  !
+                </>
+              ) : (
+                <>
+                  Welcome to{" "}
+                  <span className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
+                    ArogyaNet
+                  </span>
+                </>
+              )}
             </motion.h1>
 
             <motion.p

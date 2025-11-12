@@ -22,6 +22,7 @@ const AppointmentSection = () => {
         title: "Appointment Booking",
         description: "Redirecting to appointment booking page...",
       });
+      navigate("/book-appointment");
     }
   };
 
@@ -124,14 +125,21 @@ const AppointmentSection = () => {
           transition={{ duration: 0.6, delay: 0.8 }}
           className="text-center"
         >
-          <Button
-            size="lg"
-            onClick={handleBookAppointment}
-            className="group bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all duration-300"
-          >
-            {user ? "Book Your Appointment Now" : "Sign In to Book Appointment"}
-            <Calendar className="ml-2 group-hover:scale-110 transition-transform" />
-          </Button>
+          {(!user || user.role === "patient") && (
+            <Button
+              size="lg"
+              onClick={handleBookAppointment}
+              className="group bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/50 transition-all duration-300"
+            >
+              {user ? "Book Your Appointment Now" : "Sign In to Book Appointment"}
+              <Calendar className="ml-2 group-hover:scale-110 transition-transform" />
+            </Button>
+          )}
+          {user && user.role !== "patient" && (
+            <p className="text-sm text-muted-foreground">
+              Appointment booking is available for patient accounts.
+            </p>
+          )}
         </motion.div>
       </div>
     </section>

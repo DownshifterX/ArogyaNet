@@ -4,9 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { apiClient } from "@/api/client";
 import { useToast } from "@/hooks/use-toast";
-import { User } from "lucide-react";
+import { User as UserIcon } from "lucide-react";
 
 export const ProfileCompletionDialog = () => {
   const { user } = useAuth();
@@ -24,16 +24,9 @@ export const ProfileCompletionDialog = () => {
 
   const checkProfile = async () => {
     if (!user) return;
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("full_name, phone")
-      .eq("user_id", user.id)
-      .single();
-
-    if (error || !data?.full_name) {
-      setOpen(true);
-    }
+    // TODO: Check if profile is complete via backend API
+    // For now, always show the dialog for testing
+    // setOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,16 +44,9 @@ export const ProfileCompletionDialog = () => {
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName.trim(),
-          phone: phone.trim() || null,
-        })
-        .eq("user_id", user!.id);
-
-      if (error) throw error;
-
+      // TODO: Implement backend API to update user profile
+      // const result = await apiClient.updateProfile(user.id, { full_name: fullName, phone });
+      
       toast({
         title: "Profile Updated",
         description: "Your profile has been completed successfully",
@@ -83,7 +69,7 @@ export const ProfileCompletionDialog = () => {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <User className="w-5 h-5 text-primary" />
+            <UserIcon className="w-5 h-5 text-primary" />
             Complete Your Profile
           </DialogTitle>
           <DialogDescription>

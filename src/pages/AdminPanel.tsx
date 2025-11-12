@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Users, Calendar, FileText, ArrowLeft, Shield } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -13,9 +14,9 @@ import { useNavigate } from "react-router-dom";
 export default function AdminPanel() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [users, setUsers] = useState<any[]>([]);
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,84 +27,16 @@ export default function AdminPanel() {
 
   const fetchAdminData = async () => {
     try {
-      // Fetch all user roles
-      const { data: rolesData, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("*");
+      setLoading(true);
+      const [fetchedUsers, fetchedAppointments, fetchedPrescriptions] = await Promise.all([
+        apiClient.getUsers(),
+        apiClient.getAppointments(),
+        apiClient.getPrescriptions(),
+      ]);
 
-      if (rolesError) throw rolesError;
-
-      // Fetch all profiles
-      const { data: profilesData, error: profilesError } = await supabase
-        .from("profiles")
-        .select("*");
-
-      if (profilesError) throw profilesError;
-
-      // Combine profiles with roles
-      const combinedUsers = profilesData?.map((profile) => ({
-        ...profile,
-        role: rolesData?.find((r) => r.user_id === profile.user_id)?.role,
-        role_id: rolesData?.find((r) => r.user_id === profile.user_id)?.id,
-      })) || [];
-
-      setUsers(combinedUsers);
-
-      // Fetch all appointments with patient and doctor names
-      const { data: apptData, error: apptError } = await supabase
-        .from("appointments")
-        .select("*")
-        .order("appointment_date", { ascending: false });
-
-      if (apptError) {
-        console.error('Appointments fetch error:', apptError);
-        toast.error("Failed to load appointments: " + apptError.message);
-      } else {
-        // Manually fetch patient and doctor names for each appointment
-        const appointmentsWithNames = await Promise.all(
-          (apptData || []).map(async (apt) => {
-            const [patientResult, doctorResult] = await Promise.all([
-              supabase.from("profiles").select("full_name").eq("user_id", apt.patient_id).single(),
-              supabase.from("profiles").select("full_name").eq("user_id", apt.doctor_id).single()
-            ]);
-
-            return {
-              ...apt,
-              patient: patientResult.data,
-              doctor: doctorResult.data
-            };
-          })
-        );
-        setAppointments(appointmentsWithNames);
-      }
-
-      // Fetch all prescriptions with patient and doctor names
-      const { data: prescData, error: prescError } = await supabase
-        .from("prescriptions")
-        .select("*")
-        .order("prescribed_date", { ascending: false });
-
-      if (prescError) {
-        console.error('Prescriptions fetch error:', prescError);
-        toast.error("Failed to load prescriptions: " + prescError.message);
-      } else {
-        // Manually fetch patient and doctor names for each prescription
-        const prescriptionsWithNames = await Promise.all(
-          (prescData || []).map(async (presc) => {
-            const [patientResult, doctorResult] = await Promise.all([
-              supabase.from("profiles").select("full_name").eq("user_id", presc.patient_id).maybeSingle(),
-              supabase.from("profiles").select("full_name").eq("user_id", presc.doctor_id).maybeSingle()
-            ]);
-
-            return {
-              ...presc,
-              patient: patientResult.data,
-              doctor: doctorResult.data
-            };
-          })
-        );
-        setPrescriptions(prescriptionsWithNames);
-      }
+      setUsers(fetchedUsers);
+      setAppointments(fetchedAppointments);
+      setPrescriptions(fetchedPrescriptions);
     } catch (error: any) {
       console.error('Admin data fetch error:', error);
       toast.error("Failed to load data: " + error.message);
@@ -112,18 +45,58 @@ export default function AdminPanel() {
     }
   };
 
-  const updateUserRole = async (userId: string, roleId: string, newRole: "patient" | "doctor" | "admin") => {
+  const updateUserRole = async (userId: string, newRole: "patient" | "doctor" | "admin") => {
     try {
-      const { error } = await supabase
-        .from("user_roles")
-        .update({ role: newRole })
-        .eq("id", roleId);
-
-      if (error) throw error;
+      const updated = await apiClient.updateUserRole(userId, newRole);
+      if (!updated) throw new Error("Unable to update role");
       toast.success("User role updated successfully");
-      fetchAdminData();
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, ...updated } : u))
+      );
     } catch (error: any) {
       toast.error("Failed to update role: " + error.message);
+    }
+  };
+
+  const updateDoctorApproval = async (userId: string, approved: boolean) => {
+    try {
+      const updated = await apiClient.updateDoctorApproval(userId, approved);
+      if (!updated) throw new Error("Unable to update approval");
+      toast.success(approved ? "Doctor approved" : "Doctor approval revoked");
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, ...updated } : u))
+      );
+    } catch (error: any) {
+      toast.error("Failed to update approval: " + error.message);
+    }
+  };
+
+  const roleBreakdown = useMemo(() => {
+    return users.reduce(
+      (acc, user) => {
+        acc[user.role] = (acc[user.role] || 0) + 1;
+        return acc;
+      },
+      {} as Record<User["role"], number>
+    );
+  }, [users]);
+
+  const formatDate = (iso?: string) => {
+    if (!iso) return "N/A";
+    const date = new Date(iso);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  };
+
+  const statusBadge = (status: Appointment["status"]) => {
+    switch (status) {
+      case "completed":
+        return "bg-green-100 text-green-800";
+      case "confirmed":
+        return "bg-blue-100 text-blue-800";
+      case "cancelled":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-yellow-100 text-yellow-800";
     }
   };
 
@@ -148,6 +121,33 @@ export default function AdminPanel() {
           </h1>
         </div>
 
+        {user && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Your Profile</CardTitle>
+              <CardDescription>Signed in as an administrator</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Name</p>
+                <p className="font-medium">{user.name || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Email</p>
+                <p className="font-medium break-words">{user.email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Role</p>
+                <p className="font-medium capitalize">{user.role}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Users Managed</p>
+                <p className="font-medium">{users.length}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats Cards */}
         <div className="grid gap-6 md:grid-cols-3 mb-8">
           <Card>
@@ -158,9 +158,9 @@ export default function AdminPanel() {
             <CardContent>
               <div className="text-2xl font-bold">{users.length}</div>
               <p className="text-xs text-muted-foreground">
-                Patients: {users.filter((u) => u.role === "patient").length} | 
-                Doctors: {users.filter((u) => u.role === "doctor").length} | 
-                Admins: {users.filter((u) => u.role === "admin").length}
+                Patients: {roleBreakdown.patient ?? 0} | 
+                Doctors: {roleBreakdown.doctor ?? 0} | 
+                Admins: {roleBreakdown.admin ?? 0}
               </p>
             </CardContent>
           </Card>
@@ -173,7 +173,7 @@ export default function AdminPanel() {
             <CardContent>
               <div className="text-2xl font-bold">{appointments.length}</div>
               <p className="text-xs text-muted-foreground">
-                Pending: {appointments.filter((a) => a.status === "pending").length}
+                Requested: {appointments.filter((a) => a.status === "requested").length}
               </p>
             </CardContent>
           </Card>
@@ -218,30 +218,49 @@ export default function AdminPanel() {
                       <TableHead>Name</TableHead>
                       <TableHead>Phone</TableHead>
                       <TableHead>Role</TableHead>
+                      <TableHead>Approval</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell>{user.full_name || "N/A"}</TableCell>
-                        <TableCell>{user.phone || "N/A"}</TableCell>
+                    {users.map((managedUser) => (
+                      <TableRow key={managedUser.id}>
+                        <TableCell>{managedUser.name || "N/A"}</TableCell>
+                        <TableCell>{managedUser.phone || "N/A"}</TableCell>
                         <TableCell>
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            user.role === "admin" ? "bg-red-100 text-red-800" :
-                            user.role === "doctor" ? "bg-blue-100 text-blue-800" :
+                            managedUser.role === "admin" ? "bg-red-100 text-red-800" :
+                            managedUser.role === "doctor" ? "bg-blue-100 text-blue-800" :
                             "bg-green-100 text-green-800"
                           }`}>
-                            {user.role}
+                            {managedUser.role}
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Select
-                            value={user.role}
-                            onValueChange={(value) =>
-                              updateUserRole(user.user_id, user.role_id, value as "patient" | "doctor" | "admin")
-                            }
-                          >
+                          {managedUser.role === "doctor" ? (
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={Boolean(managedUser.doctorApproved)}
+                                onCheckedChange={(checked) =>
+                                  updateDoctorApproval(managedUser.id, checked)
+                                }
+                                aria-label="Doctor approval toggle"
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {managedUser.doctorApproved ? "Approved" : "Pending"}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                            <Select
+                              value={managedUser.role}
+                              onValueChange={(value) =>
+                                updateUserRole(managedUser.id, value as "patient" | "doctor" | "admin")
+                              }
+                            >
                             <SelectTrigger className="w-32">
                               <SelectValue />
                             </SelectTrigger>
@@ -270,8 +289,8 @@ export default function AdminPanel() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
+                      <TableHead>Start</TableHead>
+                      <TableHead>End</TableHead>
                       <TableHead>Patient</TableHead>
                       <TableHead>Doctor</TableHead>
                       <TableHead>Status</TableHead>
@@ -281,17 +300,12 @@ export default function AdminPanel() {
                   <TableBody>
                     {appointments.map((apt) => (
                       <TableRow key={apt.id}>
-                        <TableCell>{apt.appointment_date}</TableCell>
-                        <TableCell>{apt.appointment_time}</TableCell>
-                        <TableCell>{apt.patient?.full_name || "N/A"}</TableCell>
-                        <TableCell>{apt.doctor?.full_name || "N/A"}</TableCell>
+                        <TableCell>{formatDate(apt.startAt)}</TableCell>
+                        <TableCell>{apt.endAt ? formatDate(apt.endAt) : "-"}</TableCell>
+                        <TableCell>{apt.patient?.name || "N/A"}</TableCell>
+                        <TableCell>{apt.doctor?.name || "N/A"}</TableCell>
                         <TableCell>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            apt.status === "completed" ? "bg-green-100 text-green-800" :
-                            apt.status === "confirmed" ? "bg-blue-100 text-blue-800" :
-                            apt.status === "cancelled" ? "bg-red-100 text-red-800" :
-                            "bg-yellow-100 text-yellow-800"
-                          }`}>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(apt.status)}`}>
                             {apt.status}
                           </span>
                         </TableCell>
@@ -325,9 +339,9 @@ export default function AdminPanel() {
                   <TableBody>
                     {prescriptions.map((presc) => (
                       <TableRow key={presc.id}>
-                        <TableCell>{presc.prescribed_date}</TableCell>
-                        <TableCell>{presc.patient?.full_name || "N/A"}</TableCell>
-                        <TableCell>{presc.doctor?.full_name || "N/A"}</TableCell>
+                        <TableCell>{formatDate(presc.createdAt)}</TableCell>
+                        <TableCell>{presc.patient?.name || "N/A"}</TableCell>
+                        <TableCell>{presc.doctor?.name || "N/A"}</TableCell>
                         <TableCell>{presc.medication}</TableCell>
                         <TableCell>{presc.dosage}</TableCell>
                         <TableCell>{presc.instructions || "-"}</TableCell>

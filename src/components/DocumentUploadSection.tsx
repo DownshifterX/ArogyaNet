@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { apiClient, type MedicalDocument } from "@/api/client";
 
 const DocumentUploadSection = () => {
   const { user } = useAuth();
@@ -12,6 +13,33 @@ const DocumentUploadSection = () => {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [documents, setDocuments] = useState<MedicalDocument[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      if (!user) {
+        setDocuments([]);
+        return;
+      }
+      try {
+        setLoadingDocs(true);
+        const docs = await apiClient.listDocuments();
+        setDocuments(docs);
+      } catch (error: any) {
+        console.error("Error loading documents:", error);
+        toast({
+          title: "Unable to load documents",
+          description: error.message || "Please try again later",
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingDocs(false);
+      }
+    };
+
+    fetchDocuments();
+  }, [user, toast]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -76,17 +104,16 @@ const DocumentUploadSection = () => {
     setUploading(true);
 
     try {
-      // NOTE: Supabase storage was removed. For now simulate upload and DB insert so UI works.
-      // Replace this with a real backend multipart upload when your API has an upload endpoint.
-      await new Promise((res) => setTimeout(res, 800));
+      const uploaded = await apiClient.uploadDocument(file);
+      if (!uploaded) {
+        throw new Error("Upload failed");
+      }
 
-      toast({ title: "Upload Successful", description: "(Simulated) Your document has been uploaded and is being processed" });
+      toast({ title: "Upload Successful", description: "Your document has been uploaded and is being processed" });
+      setDocuments((prev) => [uploaded, ...prev]);
 
       // Redirect to dashboard based on role
-      if (user) {
-        // Redirect based on known role in the user object
-        if (user.role === 'patient') navigate('/patient-dashboard');
-      }
+      if (user?.role === 'patient') navigate('/patient-dashboard');
     } catch (error: any) {
       console.error('Upload error:', error);
       toast({
@@ -234,6 +261,53 @@ const DocumentUploadSection = () => {
               </p>
             </motion.div>
           </div>
+
+          {user && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              viewport={{ once: true }}
+              className="mt-12"
+            >
+              <h3 className="text-2xl font-semibold mb-4">My Documents</h3>
+              <div className="border rounded-xl p-6 bg-background/60 backdrop-blur">
+                {loadingDocs ? (
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Loading documents...
+                  </div>
+                ) : documents.length === 0 ? (
+                  <p className="text-muted-foreground">No documents uploaded yet.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {documents.map((doc) => {
+                      const created = doc.createdAt ? new Date(doc.createdAt) : null;
+                      const sizeMb = ((doc.size ?? 0) / 1024 / 1024).toFixed(2);
+                      return (
+                        <li key={doc.id} className="flex items-center justify-between gap-4 border border-border/60 rounded-lg p-4 hover:border-primary/40 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-5 h-5 text-primary" />
+                            <div>
+                              <p className="font-medium">{doc.originalName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {(created && !Number.isNaN(created.getTime()) ? created.toLocaleString() : "Unknown date")} &bull; {sizeMb} MB
+                              </p>
+                            </div>
+                          </div>
+                          <Button asChild variant="outline" size="sm">
+                            <a href={doc.url} target="_blank" rel="noreferrer">
+                              View
+                            </a>
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </motion.div>
+          )}
         </motion.div>
       </div>
     </section>

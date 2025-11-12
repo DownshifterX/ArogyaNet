@@ -4,15 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Activity, Mail, Lock, User as UserIcon, ArrowLeft } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import { z } from "zod";
-import { User } from "@supabase/supabase-js";
 import WelcomeAnimation from "@/components/WelcomeAnimation";
 
+// Accept either normal emails or shorthand addresses like user@doctor or user@admin
+const emailSchema = z.union([
+  z.string().email("Invalid email address"),
+  z.string().regex(/^[A-Za-z0-9._%+-]+@(doctor|admin)$/i, "Invalid internal address (use user@doctor or user@admin)"),
+]);
+
 const authSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  email: emailSchema,
   password: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Name must be at least 2 characters").optional(),
 });
@@ -26,21 +31,9 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<UserRole>("patient");
-  const [welcomeUser, setWelcomeUser] = useState<User | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
-
-  const detectRoleFromEmail = (email: string): UserRole => {
-    // Auto-detect role based on email domain
-    if (email.includes("@doctor.") || email.includes(".doctor@")) {
-      return "doctor";
-    }
-    if (email.includes("@admin.") || email.includes(".admin@")) {
-      return "admin";
-    }
-    return "patient";
-  };
+  const { login, signup, user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,41 +48,37 @@ const Auth = () => {
       authSchema.parse(validationData);
 
       if (isLogin) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) throw error;
-
-        setWelcomeUser(data.user);
-        setShowWelcome(true);
+        // Call login from useAuth context
+        const success = await login(email, password);
+        if (success) {
+          toast({
+            title: "Login successful!",
+            description: `Welcome back!`,
+          });
+          setShowWelcome(true);
+        } else {
+          toast({
+            title: "Login Failed",
+            description: "Invalid credentials",
+            variant: "destructive",
+          });
+        }
       } else {
-        const detectedRole = detectRoleFromEmail(email);
-        
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              full_name: fullName,
-              role: detectedRole,
-            },
-          },
-        });
-
-        if (error) throw error;
-
-        toast({
-          title: "Account created successfully!",
-          description: `Welcome to ArogyaNet as a ${detectedRole}`,
-        });
-
-        // Get the newly created user
-        const { data: { user: newUser } } = await supabase.auth.getUser();
-        setWelcomeUser(newUser);
-        setShowWelcome(true);
+        // Call signup from useAuth context
+        const success = await signup(email, password, fullName);
+        if (success) {
+          toast({
+            title: "Account created successfully!",
+            description: `Welcome to ArogyaNet!`,
+          });
+          setShowWelcome(true);
+        } else {
+          toast({
+            title: "Signup Failed",
+            description: "Could not create account",
+            variant: "destructive",
+          });
+        }
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -110,32 +99,20 @@ const Auth = () => {
     }
   };
 
-  const handleWelcomeComplete = async () => {
+  const handleWelcomeComplete = () => {
     setShowWelcome(false);
     
-    // Fetch user role to redirect appropriately
-    if (welcomeUser) {
-      try {
-        const { data: roleData } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", welcomeUser.id)
-          .single();
-        
-        const userRole = roleData?.role;
-        
-        // Redirect based on role
-        if (userRole === "admin") {
-          navigate("/admin-panel");
-        } else if (userRole === "doctor") {
-          navigate("/doctor-dashboard");
-        } else if (userRole === "patient") {
-          navigate("/patient-dashboard");
-        } else {
-          navigate("/");
-        }
-      } catch (error) {
-        console.error("Error fetching role:", error);
+    // Redirect based on user role from context
+    if (user) {
+      const userRole = user.role as UserRole;
+      
+      if (userRole === "admin") {
+        navigate("/admin-panel");
+      } else if (userRole === "doctor") {
+        navigate("/doctor-dashboard");
+      } else if (userRole === "patient") {
+        navigate("/patient-dashboard");
+      } else {
         navigate("/");
       }
     } else {
@@ -143,7 +120,7 @@ const Auth = () => {
     }
   };
 
-  if (showWelcome && welcomeUser) {
+  if (showWelcome && user) {
     return <WelcomeAnimation onComplete={handleWelcomeComplete} />;
   }
 
@@ -244,11 +221,7 @@ const Auth = () => {
                 required
               />
             </div>
-            {!isLogin && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Your role will be automatically detected from your email
-              </p>
-            )}
+
           </div>
 
           <div>
@@ -287,19 +260,7 @@ const Auth = () => {
           </button>
         </div>
 
-        {!isLogin && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="mt-6 p-4 bg-primary/5 rounded-lg border border-primary/10"
-          >
-            <p className="text-xs text-muted-foreground text-center">
-              <strong>Role Detection:</strong> Use @doctor.com or @admin.com in
-              your email for automatic role assignment. Default is patient.
-            </p>
-          </motion.div>
-        )}
+
       </motion.div>
     </div>
   );

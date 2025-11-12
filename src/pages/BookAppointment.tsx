@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { apiClient, type User as ApiUser } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,21 +13,15 @@ import { Calendar as CalendarIcon, Clock, User, FileText, ArrowLeft } from "luci
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-interface Doctor {
-  user_id: string;
-  full_name: string | null;
-  phone: string | null;
-}
-
 const BookAppointment = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctors, setDoctors] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [date, setDate] = useState<Date>();
   const [formData, setFormData] = useState({
-    doctor_id: "",
+    doctorId: "",
     appointment_time: "",
     notes: "",
   });
@@ -37,18 +31,11 @@ const BookAppointment = () => {
   }, []);
 
   const fetchDoctors = async () => {
-    const { data: doctorRoles } = await supabase
-      .from("user_roles")
-      .select("user_id")
-      .eq("role", "doctor");
-
-    if (doctorRoles) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("*")
-        .in("user_id", doctorRoles.map(d => d.user_id));
-      
-      setDoctors(profiles || []);
+    try {
+      const fetched = await apiClient.getDoctors();
+      setDoctors(fetched);
+    } catch (error) {
+      console.error("Error fetching doctors:", error);
     }
   };
 
@@ -67,39 +54,32 @@ const BookAppointment = () => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.from("appointments").insert({
-        patient_id: user!.id,
-        doctor_id: formData.doctor_id,
+      const appointmentData = {
+        doctorId: formData.doctorId,
         appointment_date: format(date, "yyyy-MM-dd"),
         appointment_time: formData.appointment_time,
         notes: formData.notes,
         status: "pending",
-      });
-
-      if (error) throw error;
-
-      // Send notification via edge function
-      try {
-        await supabase.functions.invoke('send-appointment-notification', {
-          body: {
-            appointmentId: new Date().getTime().toString(),
-            patientId: user!.id,
-            doctorId: formData.doctor_id,
-            appointmentDate: format(date, "yyyy-MM-dd"),
-            appointmentTime: formData.appointment_time,
-            notes: formData.notes,
-          },
-        });
-      } catch (notificationError) {
-        console.error('Notification error:', notificationError);
-        // Don't block the user flow if notification fails
+      };
+      
+      const startAtIso = new Date(`${appointmentData.appointment_date}T${appointmentData.appointment_time}`);
+      if (Number.isNaN(startAtIso.getTime())) {
+        throw new Error("Invalid appointment date or time");
       }
-
-      toast({
-        title: "Success",
-        description: "Your appointment has been booked successfully!",
+      const result = await apiClient.createAppointment({
+        doctorId: formData.doctorId,
+        startAt: startAtIso.toISOString(),
+        notes: appointmentData.notes,
       });
-      navigate("/patient-dashboard");
+      if (result) {
+        toast({
+          title: "Success",
+          description: "Your appointment has been booked successfully!",
+        });
+        navigate("/patient-dashboard");
+      } else {
+        throw new Error("Failed to book appointment");
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -115,6 +95,8 @@ const BookAppointment = () => {
     "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
     "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00"
   ];
+
+  const availableDoctors = doctors.filter((doctor) => doctor.doctorApproved !== false);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/10">
@@ -149,21 +131,21 @@ const BookAppointment = () => {
                 Select Doctor
               </Label>
               <Select
-                value={formData.doctor_id}
-                onValueChange={(value) => setFormData({ ...formData, doctor_id: value })}
+                value={formData.doctorId}
+                onValueChange={(value) => setFormData({ ...formData, doctorId: value })}
                 required
               >
                 <SelectTrigger className="h-12 text-base">
                   <SelectValue placeholder="Choose your preferred doctor" />
                 </SelectTrigger>
                 <SelectContent>
-                  {doctors.length === 0 ? (
+                  {availableDoctors.length === 0 ? (
                     <SelectItem value="none" disabled>No doctors available</SelectItem>
                   ) : (
-                    doctors.map((doctor) => (
-                      <SelectItem key={doctor.user_id} value={doctor.user_id}>
+                    availableDoctors.map((doctor) => (
+                      <SelectItem key={doctor.id} value={doctor.id}>
                         <div className="flex flex-col">
-                          <span className="font-medium">{doctor.full_name || "Doctor"}</span>
+                          <span className="font-medium">{doctor.name || "Doctor"}</span>
                           {doctor.phone && <span className="text-xs text-muted-foreground">{doctor.phone}</span>}
                         </div>
                       </SelectItem>

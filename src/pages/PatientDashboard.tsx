@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +15,9 @@ import { useNavigate } from "react-router-dom";
 export default function PatientDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [prescriptions, setPrescriptions] = useState<any[]>([]);
-  const [doctors, setDoctors] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [doctors, setDoctors] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
   // New appointment form state
@@ -34,50 +34,15 @@ export default function PatientDashboard() {
 
   const fetchPatientData = async () => {
     try {
-      // Fetch appointments
-      const { data: apptData, error: apptError } = await supabase
-        .from("appointments")
-        .select(`
-          *,
-          doctor:profiles!appointments_doctor_id_fkey(full_name, phone)
-        `)
-        .eq("patient_id", user?.id)
-        .order("appointment_date", { ascending: true });
+      const [apptData, prescriptionData, doctorData] = await Promise.all([
+        apiClient.getAppointments(),
+        apiClient.getPrescriptions(),
+        apiClient.getDoctors(),
+      ]);
 
-      if (apptError) throw apptError;
       setAppointments(apptData || []);
-
-      // Fetch prescriptions
-      const { data: prescData, error: prescError } = await supabase
-        .from("prescriptions")
-        .select(`
-          *,
-          doctor:profiles!prescriptions_doctor_id_fkey(full_name)
-        `)
-        .eq("patient_id", user?.id)
-        .order("prescribed_date", { ascending: false });
-
-      if (prescError) throw prescError;
-      setPrescriptions(prescData || []);
-
-      // Fetch doctors (users with doctor role)
-      const { data: doctorRoles, error: doctorError } = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "doctor");
-
-      if (doctorError) throw doctorError;
-
-      if (doctorRoles && doctorRoles.length > 0) {
-        const doctorIds = doctorRoles.map((r) => r.user_id);
-        const { data: doctorProfiles, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .in("user_id", doctorIds);
-
-        if (profileError) throw profileError;
-        setDoctors(doctorProfiles || []);
-      }
+      setPrescriptions(prescriptionData || []);
+      setDoctors(doctorData || []);
     } catch (error: any) {
       toast.error("Failed to load data: " + error.message);
     } finally {
@@ -93,22 +58,31 @@ export default function PatientDashboard() {
     }
 
     try {
-      const { error } = await supabase.from("appointments").insert({
-        patient_id: user?.id,
-        doctor_id: selectedDoctor,
-        appointment_date: appointmentDate,
-        appointment_time: appointmentTime,
-        notes,
-        status: "pending",
-      });
+      const startAt = new Date(`${appointmentDate}T${appointmentTime}`);
+      if (Number.isNaN(startAt.getTime())) {
+        throw new Error("Invalid date or time");
+      }
 
-      if (error) throw error;
-      toast.success("Appointment booked successfully");
-      setSelectedDoctor("");
-      setAppointmentDate("");
-      setAppointmentTime("");
-      setNotes("");
-      fetchPatientData();
+      const result = await apiClient.createAppointment({
+        doctorId: selectedDoctor,
+        startAt: startAt.toISOString(),
+        notes,
+      });
+      if (result) {
+        toast.success("Appointment booked successfully");
+        setSelectedDoctor("");
+        setAppointmentDate("");
+        setAppointmentTime("");
+        setNotes("");
+        // optimistically prepend new appointment
+        if (result) {
+          setAppointments((prev) => [result, ...prev]);
+        } else {
+          fetchPatientData();
+        }
+      } else {
+        toast.error("Failed to book appointment");
+      }
     } catch (error: any) {
       toast.error("Failed to book appointment: " + error.message);
     }
@@ -131,6 +105,33 @@ export default function PatientDashboard() {
           </Button>
           <h1 className="text-4xl font-bold">Patient Dashboard</h1>
         </div>
+
+        {user && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Your Profile</CardTitle>
+              <CardDescription>Personal information and account status</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Name</p>
+                <p className="font-medium">{user.name || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Email</p>
+                <p className="font-medium break-words">{user.email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Phone</p>
+                <p className="font-medium">{user.phone || "Not provided"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Upcoming Visits</p>
+                <p className="font-medium">{appointments.filter((apt) => apt.status !== "completed" && apt.status !== "cancelled").length}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Tabs defaultValue="appointments" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -161,9 +162,11 @@ export default function PatientDashboard() {
                         onChange={(e) => setSelectedDoctor(e.target.value)}
                       >
                         <option value="">Choose a doctor</option>
-                        {doctors.map((doc) => (
-                          <option key={doc.user_id} value={doc.user_id}>
-                            {doc.full_name || "Doctor"}
+                        {doctors
+                          .filter((doc) => doc.doctorApproved !== false)
+                          .map((doc) => (
+                          <option key={doc.id} value={doc.id}>
+                            {doc.name || "Doctor"}
                           </option>
                         ))}
                       </select>
@@ -213,10 +216,11 @@ export default function PatientDashboard() {
                         <div className="flex justify-between items-start">
                           <div>
                             <div className="font-semibold">
-                              Dr. {apt.doctor?.full_name || "N/A"}
+                              Dr. {apt.doctor?.name || "N/A"}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {apt.appointment_date} at {apt.appointment_time}
+                              {apt.startAt ? new Date(apt.startAt).toLocaleDateString() : "N/A"} at{" "}
+                              {apt.startAt ? new Date(apt.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "N/A"}
                             </div>
                             {apt.notes && (
                               <div className="text-sm mt-2">{apt.notes}</div>
@@ -259,8 +263,8 @@ export default function PatientDashboard() {
                   <TableBody>
                     {prescriptions.map((presc) => (
                       <TableRow key={presc.id}>
-                        <TableCell>{presc.prescribed_date}</TableCell>
-                        <TableCell>Dr. {presc.doctor?.full_name || "N/A"}</TableCell>
+                        <TableCell>{presc.createdAt ? new Date(presc.createdAt).toLocaleDateString() : "N/A"}</TableCell>
+                        <TableCell>Dr. {presc.doctor?.name || "N/A"}</TableCell>
                         <TableCell>{presc.medication}</TableCell>
                         <TableCell>{presc.dosage}</TableCell>
                         <TableCell>{presc.instructions || "-"}</TableCell>

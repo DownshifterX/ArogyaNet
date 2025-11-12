@@ -24,10 +24,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Check for existing session on mount
     const checkSession = async () => {
       try {
-        const currentUser = await apiClient.getCurrentUser();
-        if (currentUser) {
-          setUser(currentUser);
-          setUserRole((currentUser.role as UserRole) || null);
+        const token = localStorage.getItem("accessToken");
+        if (token) {
+          const currentUser = await apiClient.getCurrentUser();
+          if (currentUser) {
+            setUser(currentUser);
+            setUserRole((currentUser.role as UserRole) || null);
+          } else {
+            // Token is invalid or expired
+            localStorage.removeItem("accessToken");
+          }
         }
       } catch (error) {
         console.error("Error checking session:", error);

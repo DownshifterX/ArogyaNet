@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,73 +10,79 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Calendar, Users, FileText, ArrowLeft } from "lucide-react";
+import { Calendar, Users, FileText, ArrowLeft, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+const formatDate = (iso?: string) => {
+  if (!iso) return "N/A";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleDateString();
+};
+
+const formatTime = (iso?: string) => {
+  if (!iso) return "N/A";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+const statusBadge = (status: Appointment["status"]) => {
+  switch (status) {
+    case "completed":
+      return "bg-green-100 text-green-800";
+    case "confirmed":
+      return "bg-blue-100 text-blue-800";
+    case "cancelled":
+      return "bg-red-100 text-red-800";
+    default:
+      return "bg-yellow-100 text-yellow-800";
+  }
+};
 
 export default function DoctorDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [patients, setPatients] = useState<any[]>([]);
-  const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // New prescription form state
   const [selectedPatient, setSelectedPatient] = useState("");
   const [medication, setMedication] = useState("");
   const [dosage, setDosage] = useState("");
   const [instructions, setInstructions] = useState("");
 
+  const isDoctorPendingApproval = user?.role === "doctor" && user.doctorApproved === false;
+
   useEffect(() => {
-    if (user) {
-      fetchDoctorData();
+    if (!user) return;
+    if (isDoctorPendingApproval) {
+      setLoading(false);
+      return;
     }
-  }, [user]);
+    fetchDoctorData();
+  }, [user, isDoctorPendingApproval]);
+
+  const patients = useMemo(() => {
+    const map = new Map<string, User>();
+    appointments.forEach((apt) => {
+      if (apt.patient) {
+        map.set(apt.patient.id, apt.patient);
+      }
+    });
+    return Array.from(map.values());
+  }, [appointments]);
 
   const fetchDoctorData = async () => {
     try {
-      // Fetch appointments
-      const { data: apptData, error: apptError } = await supabase
-        .from("appointments")
-        .select(`
-          *,
-          patient:profiles!appointments_patient_id_fkey(full_name, phone)
-        `)
-        .eq("doctor_id", user?.id)
-        .order("appointment_date", { ascending: true });
+      setLoading(true);
+      const [apptData, prescriptionData] = await Promise.all([
+        apiClient.getAppointments(),
+        apiClient.getPrescriptions(),
+      ]);
 
-      if (apptError) throw apptError;
-      setAppointments(apptData || []);
-
-      // Fetch unique patients from appointments
-      const uniquePatients: any[] = [];
-      const seenIds = new Set();
-      
-      apptData?.forEach((apt: any) => {
-        if (!seenIds.has(apt.patient_id) && apt.patient) {
-          seenIds.add(apt.patient_id);
-          uniquePatients.push({
-            id: apt.patient_id,
-            full_name: apt.patient.full_name,
-            phone: apt.patient.phone
-          });
-        }
-      });
-      
-      setPatients(uniquePatients);
-
-      // Fetch prescriptions
-      const { data: prescData, error: prescError } = await supabase
-        .from("prescriptions")
-        .select(`
-          *,
-          patient:profiles!prescriptions_patient_id_fkey(full_name)
-        `)
-        .eq("doctor_id", user?.id)
-        .order("prescribed_date", { ascending: false });
-
-      if (prescError) throw prescError;
-      setPrescriptions(prescData || []);
+      setAppointments(apptData);
+      setPrescriptions(prescriptionData);
     } catch (error: any) {
       toast.error("Failed to load data: " + error.message);
     } finally {
@@ -84,16 +90,12 @@ export default function DoctorDashboard() {
     }
   };
 
-  const updateAppointmentStatus = async (id: string, status: string) => {
+  const updateAppointmentStatus = async (id: string, status: Appointment["status"]) => {
     try {
-      const { error } = await supabase
-        .from("appointments")
-        .update({ status })
-        .eq("id", id);
-
-      if (error) throw error;
+      const updated = await apiClient.updateAppointment(id, { status });
+      if (!updated) throw new Error("Unable to update appointment");
       toast.success("Appointment status updated");
-      fetchDoctorData();
+      setAppointments((prev) => prev.map((apt) => (apt.id === id ? updated : apt)));
     } catch (error: any) {
       toast.error("Failed to update: " + error.message);
     }
@@ -107,21 +109,19 @@ export default function DoctorDashboard() {
     }
 
     try {
-      const { error } = await supabase.from("prescriptions").insert({
-        patient_id: selectedPatient,
-        doctor_id: user?.id,
+      const created = await apiClient.createPrescription({
+        patientId: selectedPatient,
         medication,
         dosage,
         instructions,
       });
-
-      if (error) throw error;
+      if (!created) throw new Error("Unable to create prescription");
       toast.success("Prescription created successfully");
       setSelectedPatient("");
       setMedication("");
       setDosage("");
       setInstructions("");
-      fetchDoctorData();
+      setPrescriptions((prev) => [created, ...prev]);
     } catch (error: any) {
       toast.error("Failed to create prescription: " + error.message);
     }
@@ -135,6 +135,30 @@ export default function DoctorDashboard() {
     );
   }
 
+  if (isDoctorPendingApproval) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-muted/20 flex items-center justify-center px-4">
+        <Card className="max-w-lg w-full">
+          <CardHeader className="space-y-2 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <CardTitle>Awaiting Admin Approval</CardTitle>
+            <CardDescription>
+              Your account is pending review. An administrator must approve your profile before you can access doctor tools.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground text-center">
+            <p>We&apos;ll notify you once your account is approved. In the meantime, you can review your profile details or contact support.</p>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Back to Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
@@ -144,6 +168,35 @@ export default function DoctorDashboard() {
           </Button>
           <h1 className="text-4xl font-bold">Doctor Dashboard</h1>
         </div>
+
+        {user && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Your Profile</CardTitle>
+              <CardDescription>Current practitioner information</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Name</p>
+                <p className="font-medium">{user.name || "N/A"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Email</p>
+                <p className="font-medium break-words">{user.email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Approval Status</p>
+                <p className={`font-medium ${user.doctorApproved ? "text-green-600" : "text-yellow-600"}`}>
+                  {user.doctorApproved ? "Approved" : "Pending admin review"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Upcoming Appointments</p>
+                <p className="font-medium">{appointments.filter((apt) => apt.status === "requested" || apt.status === "confirmed").length}</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Tabs defaultValue="appointments" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-3">
@@ -182,16 +235,11 @@ export default function DoctorDashboard() {
                   <TableBody>
                     {appointments.map((apt) => (
                       <TableRow key={apt.id}>
-                        <TableCell>{apt.appointment_date}</TableCell>
-                        <TableCell>{apt.appointment_time}</TableCell>
-                        <TableCell>{apt.patient?.full_name || "N/A"}</TableCell>
+                        <TableCell>{formatDate(apt.startAt)}</TableCell>
+                        <TableCell>{formatTime(apt.startAt)}</TableCell>
+                        <TableCell>{apt.patient?.name || "N/A"}</TableCell>
                         <TableCell>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            apt.status === "completed" ? "bg-green-100 text-green-800" :
-                            apt.status === "confirmed" ? "bg-blue-100 text-blue-800" :
-                            apt.status === "cancelled" ? "bg-red-100 text-red-800" :
-                            "bg-yellow-100 text-yellow-800"
-                          }`}>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(apt.status)}`}>
                             {apt.status}
                           </span>
                         </TableCell>
@@ -199,13 +247,13 @@ export default function DoctorDashboard() {
                         <TableCell>
                           <Select
                             value={apt.status}
-                            onValueChange={(value) => updateAppointmentStatus(apt.id, value)}
+                            onValueChange={(value) => updateAppointmentStatus(apt.id, value as Appointment["status"])}
                           >
                             <SelectTrigger className="w-32">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="requested">Requested</SelectItem>
                               <SelectItem value="confirmed">Confirmed</SelectItem>
                               <SelectItem value="completed">Completed</SelectItem>
                               <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -238,10 +286,10 @@ export default function DoctorDashboard() {
                   <TableBody>
                     {patients.map((patient) => (
                       <TableRow key={patient.id}>
-                        <TableCell>{patient.full_name || "N/A"}</TableCell>
+                        <TableCell>{patient.name || "N/A"}</TableCell>
                         <TableCell>{patient.phone || "N/A"}</TableCell>
                         <TableCell>
-                          {appointments.filter((a) => a.patient_id === patient.id).length}
+                          {appointments.filter((a) => a.patient?.id === patient.id).length}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -269,7 +317,7 @@ export default function DoctorDashboard() {
                         <SelectContent>
                           {patients.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.full_name}
+                              {p.name || "Unnamed"}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -313,9 +361,9 @@ export default function DoctorDashboard() {
                   <div className="space-y-4">
                     {prescriptions.map((presc) => (
                       <div key={presc.id} className="border rounded-lg p-4">
-                        <div className="font-semibold">{presc.patient?.full_name}</div>
+                        <div className="font-semibold">{presc.patient?.name || "N/A"}</div>
                         <div className="text-sm text-muted-foreground">
-                          {presc.prescribed_date}
+                          {formatDate(presc.createdAt)}
                         </div>
                         <div className="mt-2">
                           <strong>Medication:</strong> {presc.medication}
