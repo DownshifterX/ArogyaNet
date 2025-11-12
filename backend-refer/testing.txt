@@ -1,0 +1,93 @@
+REGISTER DOCTOR
+POST http://localhost:8080/api/auth/register
+{
+    "name": "ABC",
+    "email": "abc@test.com",
+    "password": "test123",
+    "role": "doctor"
+}
+
+
+
+Response:
+{
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...",
+    "user": {
+        "id": "abc123",
+        "name": "ABC",
+        "email": "abc@test.com",
+        "role": "doctor"
+    }
+}
+
+REGISTER PATIENT
+POST http://localhost:8080/api/auth/register
+{
+    "name": "XYZ",
+    "email": "xyz@test.com",
+    "password": "test123",
+    "role": "patient"
+}
+
+LOGIN AS DOCTOR
+POST http://localhost:8080/api/auth/login
+{
+    "email": "abc@test.com",
+    "password": "test123"
+}
+
+LOGIN AS PATIENT
+POST http://localhost:8080/api/auth/login
+{
+    "email": "xyz@test.com",
+    "password": "test123"
+}
+
+GET USER PROFILE
+GET http://localhost:8080/api/users/abc123
+accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...
+
+LIST ALL USERS (ADMIN ONLY)
+GET http://localhost:8080/api/users
+accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...
+
+CREATE APPOINTMENT
+POST http://localhost:8080/api/appointments
+accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...
+{
+    "doctorId": "abc123",
+    "startAt": "2025-11-10T14:00:00Z",
+    "endAt": "2025-11-10T14:30:00Z",
+    "notes": "Test appointment"
+}
+
+LIST MY APPOINTMENTS
+GET http://localhost:8080/api/appointments
+accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...
+
+UPDATE APPOINTMENT
+PUT http://localhost:8080/api/appointments/appt123
+accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...
+{
+    "status": "confirmed",
+    "notes": "Appointment confirmed"
+}
+
+SEND WEBRTC SIGNAL
+POST http://localhost:8080/api/video/signal
+accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ...
+{
+    "toUserId": "xyz123",
+    "payload": {
+        "type": "offer",
+        "sdp": "v=0\r\n..."
+    }
+}
+
+REFRESH TOKEN
+POST http://localhost:8080/api/auth/refresh
+Cookie: refreshToken=abc123xyz...
+
+LOGOUT
+POST http://localhost:8080/api/auth/logout
+Cookie: refreshToken=abc123xyz...

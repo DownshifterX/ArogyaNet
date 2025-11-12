@@ -1,82 +1,87 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { apiClient, type User } from "@/api/client";
 
 type UserRole = "patient" | "doctor" | "admin";
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
   userRole: UserRole | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
+  signup: (email: string, password: string, fullName: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      // Fetch user role when authenticated
-      if (session?.user) {
-        setTimeout(() => {
-          fetchUserRole(session.user.id);
-        }, 0);
-      } else {
-        setUserRole(null);
+    // Check for existing session on mount
+    const checkSession = async () => {
+      try {
+        const currentUser = await apiClient.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+          setUserRole((currentUser.role as UserRole) || null);
+        }
+      } catch (error) {
+        console.error("Error checking session:", error);
+      } finally {
+        setLoading(false);
       }
-    });
+    };
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserRole(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    checkSession();
   }, []);
 
-  const fetchUserRole = async (userId: string) => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .single();
-
-      if (error) throw error;
-      setUserRole(data?.role as UserRole);
+      const response = await apiClient.login(email, password);
+      if (response.success && response.user) {
+        setUser(response.user as unknown as User);
+        setUserRole((response.user.role as UserRole) || null);
+        return true;
+      }
+      return false;
     } catch (error) {
-      console.error("Error fetching user role:", error);
-      setUserRole(null);
+      console.error("Error logging in:", error);
+      return false;
+    }
+  };
+
+  const signup = async (email: string, password: string, fullName: string): Promise<boolean> => {
+    try {
+      const response = await apiClient.signup(email, password, fullName);
+      if (response.success && response.user) {
+        setUser(response.user as unknown as User);
+        setUserRole((response.user.role as UserRole) || null);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error signing up:", error);
+      return false;
     }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setUserRole(null);
+    try {
+      await apiClient.logout();
+    } catch (error) {
+      console.error("Error logging out:", error);
+    } finally {
+      setUser(null);
+      setUserRole(null);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, userRole, loading, signOut }}>
+    <AuthContext.Provider value={{ user, userRole, loading, signOut, login, signup }}>
       {children}
     </AuthContext.Provider>
   );

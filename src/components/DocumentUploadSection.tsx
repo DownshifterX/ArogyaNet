@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
@@ -77,44 +76,16 @@ const DocumentUploadSection = () => {
     setUploading(true);
 
     try {
-      // Upload to storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('health-records')
-        .upload(fileName, file);
+      // NOTE: Supabase storage was removed. For now simulate upload and DB insert so UI works.
+      // Replace this with a real backend multipart upload when your API has an upload endpoint.
+      await new Promise((res) => setTimeout(res, 800));
 
-      if (uploadError) throw uploadError;
-
-      // Create health record entry
-      const { error: dbError } = await supabase
-        .from('health_records')
-        .insert({
-          user_id: user.id,
-          file_name: file.name,
-          file_path: fileName,
-          analysis_status: 'pending',
-        });
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: "Upload Successful",
-        description: "Your document has been uploaded and is being processed",
-      });
+      toast({ title: "Upload Successful", description: "(Simulated) Your document has been uploaded and is being processed" });
 
       // Redirect to dashboard based on role
       if (user) {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .single();
-        
-        if (roleData?.role === 'patient') {
-          navigate('/patient-dashboard');
-        }
+        // Redirect based on known role in the user object
+        if (user.role === 'patient') navigate('/patient-dashboard');
       }
     } catch (error: any) {
       console.error('Upload error:', error);
