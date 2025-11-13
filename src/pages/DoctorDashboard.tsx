@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import VideoCall from "@/components/VideoCall";
+import { env } from "@/config/env";
 
 const formatDate = (iso?: string) => {
   if (!iso) return "N/A";
@@ -65,7 +66,7 @@ export default function DoctorDashboard() {
     const initSocket = async () => {
       try {
         const { io } = await import("socket.io-client");
-        newSocket = io("http://localhost:8090", {
+        newSocket = io(env.socketUrl, {
           withCredentials: true,
           transports: ['websocket', 'polling'],
           reconnection: true,

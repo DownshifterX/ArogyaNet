@@ -1,5 +1,7 @@
 // API client for backend communication
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8090';
+import { env } from '@/config/env';
+
+const BACKEND_URL = env.backendUrl;
 
 export interface User {
   id: string;

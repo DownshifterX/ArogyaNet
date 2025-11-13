@@ -47,12 +47,48 @@ export const useWebRTC = (socket) => {
    */
   const getLocalStream = useCallback(async (constraints = { audio: true, video: true }) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-      return stream;
+      // Check if we're in a secure context (HTTPS or localhost)
+      const isSecureContext = window.isSecureContext || 
+        window.location.protocol === 'https:' || 
+        window.location.hostname === 'localhost' || 
+        window.location.hostname === '127.0.0.1';
+
+      if (!isSecureContext) {
+        const currentUrl = window.location.href;
+        throw new Error(
+          `WebRTC requires HTTPS. You are accessing via HTTP (${currentUrl}). `
+        );
+      }
+
+      const nav: any = navigator;
+
+      if (nav.mediaDevices?.getUserMedia) {
+        const stream = await nav.mediaDevices.getUserMedia(constraints);
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+        return stream;
+      }
+
+      const legacyGetUserMedia =
+        nav.getUserMedia ||
+        nav.webkitGetUserMedia ||
+        nav.mozGetUserMedia ||
+        nav.msGetUserMedia;
+
+      if (legacyGetUserMedia) {
+        const stream: MediaStream = await new Promise((resolve, reject) => {
+          legacyGetUserMedia.call(nav, constraints, resolve, reject);
+        });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+        return stream;
+      }
+
+      throw new Error(
+        'Browser does not support media capture. Ensure you are using a secure context (https) and the latest browser.'
+      );
     } catch (err) {
-      const errorMessage = `Failed to get local stream: ${err.message}`;
+      const errorMessage = `Failed to get local stream: ${(err as Error).message}`;
       setError(errorMessage);
       console.error(errorMessage, err);
       throw err;
