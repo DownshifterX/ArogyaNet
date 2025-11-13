@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import type { Socket } from "socket.io-client";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Calendar, FileText, ArrowLeft, Clock } from "lucide-react";
+import { Calendar, FileText, ArrowLeft, Clock, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import VideoCall from "@/components/VideoCall";
 
 export default function PatientDashboard() {
   const { user } = useAuth();
@@ -19,12 +21,78 @@ export default function PatientDashboard() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [doctors, setDoctors] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ callerName: string; appointmentId: string; callerId: string } | null>(null);
+  const [activeCall, setActiveCall] = useState<{ appointmentId: string; remoteUserId: string } | null>(null);
+  const [activeTab, setActiveTab] = useState("appointments");
 
   // New appointment form state
   const [selectedDoctor, setSelectedDoctor] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
   const [notes, setNotes] = useState("");
+
+  const handleIncomingCall = useCallback((data: Record<string, unknown>) => {
+    console.log("📞 handleIncomingCall called with:", data);
+    const callData = data as { callerName: string; appointmentId: string; callerId: string };
+    setIncomingCall(callData);
+    toast.info(`${callData.callerName} is calling...`);
+    console.log("✅ setIncomingCall triggered");
+  }, []);
+
+  useEffect(() => {
+    // Initialize socket connection
+    let newSocket: Socket | null = null;
+
+    const initSocket = async () => {
+      try {
+        const { io } = await import("socket.io-client");
+        newSocket = io("http://localhost:8090", {
+          withCredentials: true,
+          transports: ['websocket', 'polling'],
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          reconnectionAttempts: 5
+        });
+
+        newSocket.on("connect", () => {
+          console.log("✅ Socket connected:", newSocket?.id);
+          newSocket?.emit("identify", user?.id);
+        });
+
+        newSocket.on("disconnect", () => {
+          console.log("❌ Socket disconnected");
+        });
+        
+        // Listen for incoming video calls
+        newSocket.on("incomingVideoCall", handleIncomingCall);
+        
+        setSocket(newSocket);
+      } catch (error) {
+        console.error("Socket initialization error:", error);
+      }
+    };
+
+    if (user?.id) {
+      initSocket();
+    }
+
+    return () => {
+      if (newSocket) {
+        newSocket.disconnect();
+      }
+    };
+  }, [user?.id, handleIncomingCall]);
+
+  // Debug: Log when incomingCall changes
+  useEffect(() => {
+    console.log("🔍 incomingCall state updated:", incomingCall);
+    // Auto-switch to video tab when incoming call arrives
+    if (incomingCall) {
+      setActiveTab("video");
+    }
+  }, [incomingCall]);
 
   useEffect(() => {
     if (user) {
@@ -43,8 +111,9 @@ export default function PatientDashboard() {
       setAppointments(apptData || []);
       setPrescriptions(prescriptionData || []);
       setDoctors(doctorData || []);
-    } catch (error: any) {
-      toast.error("Failed to load data: " + error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Failed to load data: " + errorMessage);
     } finally {
       setLoading(false);
     }
@@ -83,8 +152,9 @@ export default function PatientDashboard() {
       } else {
         toast.error("Failed to book appointment");
       }
-    } catch (error: any) {
-      toast.error("Failed to book appointment: " + error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Failed to book appointment: " + errorMessage);
     }
   };
 
@@ -133,11 +203,15 @@ export default function PatientDashboard() {
           </Card>
         )}
 
-        <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+        <Tabs defaultValue="appointments" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full max-w-md grid-cols-3">
             <TabsTrigger value="appointments">
               <Calendar className="mr-2 h-4 w-4" />
               Appointments
+            </TabsTrigger>
+            <TabsTrigger value="video" className={incomingCall ? "bg-red-100" : ""}>
+              <Video className="mr-2 h-4 w-4" />
+              Video Call
             </TabsTrigger>
             <TabsTrigger value="prescriptions">
               <FileText className="mr-2 h-4 w-4" />
@@ -275,8 +349,86 @@ export default function PatientDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="video">
+            {incomingCall && socket ? (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Incoming Video Call</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-lg">
+                      <strong>{incomingCall.callerName}</strong> is calling you...
+                    </p>
+                    <div className="flex gap-4">
+                      <Button
+                        onClick={() => setIncomingCall(null)}
+                        variant="destructive"
+                        className="flex-1"
+                      >
+                        Decline
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const doctorId = appointments.find(a => a.id === incomingCall.appointmentId)?.doctor?.id;
+                          if (doctorId) {
+                            setActiveCall({ appointmentId: incomingCall.appointmentId, remoteUserId: doctorId });
+                            if (socket) {
+                              console.log("✅ Patient accepting call, notifying doctor");
+                              socket.emit("callAccepted", {
+                                remoteUserId: doctorId,
+                                appointmentId: incomingCall.appointmentId,
+                              });
+                              socket.emit("requestOffer", {
+                                remoteUserId: doctorId,
+                                appointmentId: incomingCall.appointmentId,
+                              });
+                            }
+                          }
+                        }}
+                        className="flex-1"
+                      >
+                        Accept Call
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Video Calls</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground">No incoming calls at the moment.</p>
+                    <p className="text-sm mt-2">When a doctor initiates a video call, it will appear here.</p>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
+
+      {/* Video Call Modal */}
+      {activeCall && socket && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-2xl">
+            <VideoCall
+              remoteUserId={activeCall.remoteUserId}
+              appointmentId={activeCall.appointmentId}
+              socket={socket}
+              isInitiator={false}
+              onCallEnd={() => {
+                setActiveCall(null);
+                setIncomingCall(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

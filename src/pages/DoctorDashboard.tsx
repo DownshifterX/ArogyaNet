@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { Socket } from "socket.io-client";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Calendar, Users, FileText, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import VideoCall from "@/components/VideoCall";
 
 const formatDate = (iso?: string) => {
   if (!iso) return "N/A";
@@ -46,6 +48,8 @@ export default function DoctorDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [activeCall, setActiveCall] = useState<{ appointmentId: string; remoteUserId: string } | null>(null);
 
   const [selectedPatient, setSelectedPatient] = useState("");
   const [medication, setMedication] = useState("");
@@ -53,6 +57,53 @@ export default function DoctorDashboard() {
   const [instructions, setInstructions] = useState("");
 
   const isDoctorPendingApproval = user?.role === "doctor" && user.doctorApproved === false;
+
+  useEffect(() => {
+    // Initialize socket connection
+    let newSocket: Socket | null = null;
+
+    const initSocket = async () => {
+      try {
+        const { io } = await import("socket.io-client");
+        newSocket = io("http://localhost:8090", {
+          withCredentials: true,
+          transports: ['websocket', 'polling'],
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          reconnectionAttempts: 5
+        });
+
+        newSocket.on("connect", () => {
+          console.log("✅ Doctor Socket connected:", newSocket?.id);
+          newSocket?.emit("identify", user?.id);
+        });
+
+        newSocket.on("disconnect", () => {
+          console.log("❌ Doctor Socket disconnected");
+        });
+
+        // Listen for patient accepting the call
+        newSocket.on("callAccepted", (data: Record<string, unknown>) => {
+          console.log("✅ Patient accepted call:", data);
+        });
+
+        setSocket(newSocket);
+      } catch (error) {
+        console.error("Socket initialization error:", error);
+      }
+    };
+
+    if (user?.id) {
+      initSocket();
+    }
+
+    return () => {
+      if (newSocket) {
+        newSocket.disconnect();
+      }
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -83,8 +134,9 @@ export default function DoctorDashboard() {
 
       setAppointments(apptData);
       setPrescriptions(prescriptionData);
-    } catch (error: any) {
-      toast.error("Failed to load data: " + error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Failed to load data: " + errorMessage);
     } finally {
       setLoading(false);
     }
@@ -96,8 +148,9 @@ export default function DoctorDashboard() {
       if (!updated) throw new Error("Unable to update appointment");
       toast.success("Appointment status updated");
       setAppointments((prev) => prev.map((apt) => (apt.id === id ? updated : apt)));
-    } catch (error: any) {
-      toast.error("Failed to update: " + error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Failed to update: " + errorMessage);
     }
   };
 
@@ -122,8 +175,9 @@ export default function DoctorDashboard() {
       setDosage("");
       setInstructions("");
       setPrescriptions((prev) => [created, ...prev]);
-    } catch (error: any) {
-      toast.error("Failed to create prescription: " + error.message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Failed to create prescription: " + errorMessage);
     }
   };
 
@@ -244,7 +298,32 @@ export default function DoctorDashboard() {
                           </span>
                         </TableCell>
                         <TableCell>{apt.notes || "-"}</TableCell>
-                        <TableCell>
+                        <TableCell className="space-x-2">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              console.log('📱 Call button clicked');
+                              console.log('👤 apt.patient?.id:', apt.patient?.id);
+                              console.log('🔌 socket:', socket);
+                              if (apt.patient?.id && socket) {
+                                // Emit incoming video call notification to patient
+                                console.log('📞 Emitting incomingVideoCall');
+                                socket.emit('incomingVideoCall', {
+                                  remoteUserId: apt.patient.id,
+                                  callerName: user?.name || 'Doctor',
+                                  appointmentId: apt.id
+                                });
+                                console.log('✅ incomingVideoCall emitted');
+                                setActiveCall({ appointmentId: apt.id, remoteUserId: apt.patient.id });
+                              } else {
+                                console.log('❌ Missing patient ID or socket connection');
+                              }
+                            }}
+                            className="gap-1"
+                          >
+                            <Video className="h-4 w-4" />
+                            Call
+                          </Button>
                           <Select
                             value={apt.status}
                             onValueChange={(value) => updateAppointmentStatus(apt.id, value as Appointment["status"])}
@@ -381,6 +460,21 @@ export default function DoctorDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Video Call Modal */}
+      {activeCall && socket && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-2xl">
+            <VideoCall
+              remoteUserId={activeCall.remoteUserId}
+              appointmentId={activeCall.appointmentId}
+              socket={socket}
+              isInitiator={true}
+              onCallEnd={() => setActiveCall(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
