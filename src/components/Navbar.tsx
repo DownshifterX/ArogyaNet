@@ -38,6 +38,7 @@ const Navbar = () => {
   };
 
   const navItems = [
+    { label: "About Us", id: "about" },
     { label: "Help", id: "help" },
     { label: "Book Appointment", id: "appointment" },
     { label: "Upload Documents", id: "upload-documents" },

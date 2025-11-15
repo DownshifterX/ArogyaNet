@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
+import { apiClient, type Appointment, type Prescription, type User, type MedicalDocument } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Calendar, FileText, ArrowLeft, Clock, Video } from "lucide-react";
+import { Calendar, FileText, ArrowLeft, Clock, Video, RefreshCcw, Lock, Paperclip } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import VideoCall from "@/components/VideoCall";
 import { useSocket } from "@/hooks/useSocket";
@@ -20,12 +20,18 @@ export default function PatientDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [doctors, setDoctors] = useState<User[]>([]);
+  const [documents, setDocuments] = useState<MedicalDocument[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const socket = useSocket();
   const [incomingCall, setIncomingCall] = useState<{ callerName: string; appointmentId: string; callerId: string } | null>(null);
-  const [pendingOffer, setPendingOffer] = useState<any>(null);
   const [activeCall, setActiveCall] = useState<{ appointmentId: string; remoteUserId: string } | null>(null);
   const [activeTab, setActiveTab] = useState("appointments");
+  // Change password form state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   // New appointment form state
   const [selectedDoctor, setSelectedDoctor] = useState("");
@@ -77,15 +83,17 @@ export default function PatientDashboard() {
 
   const fetchPatientData = async () => {
     try {
-      const [apptData, prescriptionData, doctorData] = await Promise.all([
+      const [apptData, prescriptionData, doctorData, docs] = await Promise.all([
         apiClient.getAppointments(),
         apiClient.getPrescriptions(),
         apiClient.getDoctors(),
+        apiClient.listDocuments(),
       ]);
 
       setAppointments(apptData || []);
       setPrescriptions(prescriptionData || []);
       setDoctors(doctorData || []);
+      setDocuments(docs || []);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast.error("Failed to load data: " + errorMessage);
@@ -144,11 +152,16 @@ export default function PatientDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Button variant="outline" onClick={() => navigate("/")}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
+        <div className="flex items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => navigate("/")}> 
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
+            </Button>
+            <h1 className="text-4xl font-bold">Patient Dashboard</h1>
+          </div>
+          <Button variant="secondary" onClick={() => window.location.reload()} className="gap-2">
+            <RefreshCcw className="h-4 w-4" /> Refresh
           </Button>
-          <h1 className="text-4xl font-bold">Patient Dashboard</h1>
         </div>
 
         {user && (
@@ -178,8 +191,10 @@ export default function PatientDashboard() {
           </Card>
         )}
 
+        {/* Security moved into its own tab below */}
+
         <Tabs defaultValue="appointments" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="appointments">
               <Calendar className="mr-2 h-4 w-4" />
               Appointments
@@ -191,6 +206,14 @@ export default function PatientDashboard() {
             <TabsTrigger value="prescriptions">
               <FileText className="mr-2 h-4 w-4" />
               Prescriptions
+            </TabsTrigger>
+            <TabsTrigger value="documents">
+              <Paperclip className="mr-2 h-4 w-4" />
+              Documents
+            </TabsTrigger>
+            <TabsTrigger value="security">
+              <Lock className="mr-2 h-4 w-4" />
+              Security
             </TabsTrigger>
           </TabsList>
 
@@ -397,6 +420,185 @@ export default function PatientDashboard() {
               </>
             )}
           </TabsContent>
+
+          <TabsContent value="documents">
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Upload Document</CardTitle>
+                  <CardDescription>PDF, images, or Word documents up to 10MB</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <Input
+                      type="file"
+                      accept="application/pdf,image/*,.doc,.docx"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                    />
+                    <Button
+                      className="w-full"
+                      disabled={!selectedFile || uploading}
+                      onClick={async () => {
+                        if (!selectedFile) return;
+                        try {
+                          setUploading(true);
+                          const uploaded = await apiClient.uploadDocument(selectedFile);
+                          if (uploaded) {
+                            toast.success('Uploaded successfully');
+                            setSelectedFile(null);
+                            // Refresh document list
+                            const docs = await apiClient.listDocuments();
+                            setDocuments(docs);
+                          } else {
+                            toast.error('Upload failed');
+                          }
+                        } catch (err) {
+                          toast.error('Upload error');
+                        } finally {
+                          setUploading(false);
+                        }
+                      }}
+                    >
+                      {uploading ? 'Uploading…' : 'Upload'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>My Documents</CardTitle>
+                  <CardDescription>Your uploaded medical documents</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {documents.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Size</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {documents.map((doc) => (
+                          <TableRow key={doc.id}>
+                            <TableCell className="max-w-[220px] truncate" title={doc.originalName}>{doc.originalName}</TableCell>
+                            <TableCell>{doc.mimeType || '-'}</TableCell>
+                            <TableCell>{(doc.size / 1024 / 1024).toFixed(2)} MB</TableCell>
+                            <TableCell>{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : '-'}</TableCell>
+                            <TableCell className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  const url = await apiClient.getDocumentDownloadUrl(doc.id);
+                                  if (url) {
+                                    window.open(url, '_blank');
+                                  } else {
+                                    toast.error('Failed to get download link');
+                                  }
+                                }}
+                              >
+                                View
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={async () => {
+                                  if (confirm(`Delete ${doc.originalName}?`)) {
+                                    const success = await apiClient.deleteDocument(doc.id);
+                                    if (success) {
+                                      toast.success('Document deleted');
+                                      setDocuments(documents.filter((d) => d.id !== doc.id));
+                                    } else {
+                                      toast.error('Failed to delete');
+                                    }
+                                  }
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="security">
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <Label>Current Password</Label>
+                    <Input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>New Password</Label>
+                    <Input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Confirm New Password</Label>
+                    <Input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Button
+                    onClick={async () => {
+                      if (!currentPassword || !newPassword || !confirmPassword) {
+                        toast.error('Please fill all password fields');
+                        return;
+                      }
+                      if (newPassword.length < 6) {
+                        toast.error('New password must be at least 6 characters');
+                        return;
+                      }
+                      if (newPassword !== confirmPassword) {
+                        toast.error('Passwords do not match');
+                        return;
+                      }
+                      const res = await apiClient.changePassword(currentPassword, newPassword);
+                      if (res.success) {
+                        toast.success(res.message || 'Password changed');
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                      } else {
+                        toast.error(res.message || 'Failed to change password');
+                      }
+                    }}
+                  >
+                    Update Password
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -409,11 +611,9 @@ export default function PatientDashboard() {
               appointmentId={activeCall.appointmentId}
               socket={socket}
               isInitiator={false}
-              initialOffer={pendingOffer}
               onCallEnd={() => {
                 setActiveCall(null);
                 setIncomingCall(null);
-                setPendingOffer(null);
               }}
             />
           </div>

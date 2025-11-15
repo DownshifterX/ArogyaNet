@@ -34,6 +34,13 @@ export default function VideoCallPage() {
 
   const isDoctor = user?.role === 'doctor';
 
+  // Helper: navigate to dashboard with a full page reload to ensure clean state
+  const goToDashboardWithReload = useCallback(() => {
+    const path = isDoctor ? '/doctor-dashboard' : '/patient-dashboard';
+    // Use hard navigation to force a full reload and media cleanup
+    window.location.assign(path);
+  }, [isDoctor]);
+
   // Initialize media stream
   const initializeMediaStream = useCallback(async () => {
     try {
@@ -302,9 +309,9 @@ export default function VideoCallPage() {
     });
     
     setTimeout(() => {
-      navigate(isDoctor ? '/doctor-dashboard' : '/patient-dashboard');
+      goToDashboardWithReload();
     }, 1000);
-  }, [remoteUserId, socket, appointmentId, myStream, toast, navigate, isDoctor]);
+  }, [remoteUserId, socket, appointmentId, myStream, toast, isDoctor, goToDashboardWithReload]);
 
   // Resume playback if blocked by autoplay policy
   const resumePlayback = useCallback(async () => {
@@ -492,7 +499,7 @@ export default function VideoCallPage() {
         title: 'Call Ended',
         description: 'The call has been ended',
       });
-      setTimeout(() => navigate(isDoctor ? '/doctor-dashboard' : '/patient-dashboard'), 2000);
+      setTimeout(() => goToDashboardWithReload(), 2000);
     });
     socket.on('call:rejected', () => {
       toast({
@@ -500,7 +507,7 @@ export default function VideoCallPage() {
         description: 'The call was rejected',
         variant: 'destructive',
       });
-      setTimeout(() => navigate(isDoctor ? '/doctor-dashboard' : '/patient-dashboard'), 2000);
+      setTimeout(() => goToDashboardWithReload(), 2000);
     });
     
     // Handle socket disconnection
@@ -527,7 +534,7 @@ export default function VideoCallPage() {
       socket.off('call:rejected');
       socket.off('disconnect');
     };
-  }, [socket, handleIncomingCall, handleCallAccepted, handleNegoIncoming, handleNegoFinal, toast, navigate, isDoctor, initiateCall, appointmentId, callStatus, endCall]);
+  }, [socket, handleIncomingCall, handleCallAccepted, handleNegoIncoming, handleNegoFinal, toast, navigate, isDoctor, initiateCall, appointmentId, callStatus, endCall, goToDashboardWithReload]);
 
   // Auto-initiate call for doctor (guard against StrictMode double-mount)
   useEffect(() => {

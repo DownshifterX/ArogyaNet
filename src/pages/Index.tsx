@@ -4,6 +4,7 @@ import FeaturesSection from "@/components/FeaturesSection";
 import AppointmentSection from "@/components/AppointmentSection";
 import DocumentUploadSection from "@/components/DocumentUploadSection";
 import HelpSection from "@/components/HelpSection";
+import AboutSection from "@/components/AboutSection";
 import { ProfileCompletionDialog } from "@/components/ProfileCompletionDialog";
 
 const Index = () => {
@@ -16,6 +17,7 @@ const Index = () => {
         <FeaturesSection />
         <AppointmentSection />
         <DocumentUploadSection />
+        <AboutSection />
         <HelpSection />
       </main>
     </div>

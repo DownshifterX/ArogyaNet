@@ -20,7 +20,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => {
-  console.log('test123');
+  console.log('test25');
   
   return (
     <QueryClientProvider client={queryClient}>

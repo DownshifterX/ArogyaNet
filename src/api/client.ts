@@ -142,6 +142,23 @@ export const apiClient = {
     }
   },
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ currentPassword, newPassword }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, message: data.message || 'Failed to change password' };
+      return { success: true, message: data.message || 'Password changed' };
+    } catch (err) {
+      console.error('Error changing password:', err);
+      return { success: false, message: 'Network error' };
+    }
+  },
+
   async getCurrentUser(): Promise<User | null> {
     try {
       const token = localStorage.getItem('accessToken');
@@ -346,7 +363,7 @@ export const apiClient = {
     }
   },
 
-  // Documents
+  // Documents - Using S3 presigned URLs
   async listDocuments(): Promise<MedicalDocument[]> {
     try {
       const res = await fetch(`${BACKEND_URL}/api/documents`, {
@@ -362,23 +379,93 @@ export const apiClient = {
     }
   },
 
-  async uploadDocument(file: File): Promise<MedicalDocument | null> {
-    const formData = new FormData();
-    formData.append('file', file);
-
+  async uploadDocument(file: File, doctorId?: string): Promise<MedicalDocument | null> {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/documents`, {
+      // Step 1: Get presigned upload URL from backend
+      const urlRes = await fetch(`${BACKEND_URL}/api/documents/upload-url`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
-        body: formData,
+        body: JSON.stringify({
+          originalName: file.name,
+          mimeType: file.type,
+          size: file.size,
+          doctorId,
+        }),
       });
-      if (!res.ok) throw new Error('Failed to upload document');
-      const data = await res.json();
+
+      if (!urlRes.ok) {
+        const errData = await urlRes.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to get upload URL');
+      }
+
+      const { uploadUrl, s3Key } = await urlRes.json();
+
+      // Step 2: Upload directly to S3 using presigned URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type,
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error('Failed to upload to S3');
+      }
+
+      // Step 3: Confirm upload with backend to save metadata
+      const confirmRes = await fetch(`${BACKEND_URL}/api/documents/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        credentials: 'include',
+        body: JSON.stringify({
+          s3Key,
+          originalName: file.name,
+          mimeType: file.type,
+          size: file.size,
+          doctorId,
+        }),
+      });
+
+      if (!confirmRes.ok) {
+        throw new Error('Failed to confirm upload');
+      }
+
+      const data = await confirmRes.json();
       return parseDocument(data);
     } catch (err) {
       console.error('Error uploading document:', err);
       return null;
+    }
+  },
+
+  async getDocumentDownloadUrl(documentId: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/${documentId}/download`, {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.downloadUrl;
+    } catch (err) {
+      console.error('Error getting download URL:', err);
+      return null;
+    }
+  },
+
+  async deleteDocument(documentId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/documents/${documentId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      return false;
     }
   },
 

@@ -10,17 +10,35 @@ import { useAuth } from "@/hooks/useAuth";
 import { z } from "zod";
 import WelcomeAnimation from "@/components/WelcomeAnimation";
 
-// Accept either normal emails or shorthand addresses like user@doctor or user@admin
-const emailSchema = z.union([
+// Email schemas
+// - Login: allow normal emails and shorthand user@doctor or user@admin
+// - Signup: allow normal emails and shorthand user@doctor only
+const loginEmailSchema = z.union([
   z.string().email("Invalid email address"),
   z.string().regex(/^[A-Za-z0-9._%+-]+@(doctor|admin)$/i, "Invalid internal address (use user@doctor or user@admin)"),
 ]);
 
-const authSchema = z.object({
-  email: emailSchema,
+const signupEmailSchema = z.union([
+  z.string().email("Invalid email address"),
+  z.string().regex(/^[A-Za-z0-9._%+-]+@(doctor)$/i, "Invalid internal address (use user@doctor)"),
+]);
+
+const loginSchema = z.object({
+  email: loginEmailSchema,
   password: z.string().min(6, "Password must be at least 6 characters"),
-  fullName: z.string().min(2, "Name must be at least 2 characters").optional(),
 });
+
+const signupSchema = z
+  .object({
+    email: signupEmailSchema,
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+    fullName: z.string().min(2, "Name must be at least 2 characters"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 type UserRole = "patient" | "doctor" | "admin";
 
@@ -30,6 +48,7 @@ const Auth = () => {
   const [showWelcome, setShowWelcome] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -41,11 +60,11 @@ const Auth = () => {
 
     try {
       // Validate input
-      const validationData = isLogin
-        ? { email, password }
-        : { email, password, fullName };
-      
-      authSchema.parse(validationData);
+      if (isLogin) {
+        loginSchema.parse({ email, password });
+      } else {
+        signupSchema.parse({ email, password, confirmPassword, fullName });
+      }
 
       if (isLogin) {
         // Call login from useAuth context
@@ -65,7 +84,7 @@ const Auth = () => {
         }
       } else {
         // Call signup from useAuth context
-        const success = await signup(email, password, fullName);
+  const success = await signup(email, password, fullName);
         if (success) {
           toast({
             title: "Account created successfully!",
@@ -80,7 +99,7 @@ const Auth = () => {
           });
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof z.ZodError) {
         toast({
           title: "Validation Error",
@@ -90,7 +109,7 @@ const Auth = () => {
       } else {
         toast({
           title: "Error",
-          description: error.message || "An error occurred during authentication",
+          description: (error instanceof Error ? error.message : String(error)) || "An error occurred during authentication",
           variant: "destructive",
         });
       }
@@ -239,6 +258,24 @@ const Auth = () => {
               />
             </div>
           </div>
+
+          {!isLogin && (
+            <div>
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="pl-10"
+                  required
+                />
+              </div>
+            </div>
+          )}
 
           <Button
             type="submit"

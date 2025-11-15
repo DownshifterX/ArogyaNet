@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSocket } from "@/hooks/useSocket";
-import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
+import { apiClient, type Appointment, type Prescription, type User, type MedicalDocument } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video } from "lucide-react";
+import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video, RefreshCcw, Lock, Paperclip } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const formatDate = (iso?: string) => {
@@ -49,6 +49,14 @@ export default function DoctorDashboard() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCall, setActiveCall] = useState<{ appointmentId: string; remoteUserId: string } | null>(null);
+  // Change password form state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  // Documents state
+  const [documents, setDocuments] = useState<MedicalDocument[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [selectedPatient, setSelectedPatient] = useState("");
   const [medication, setMedication] = useState("");
@@ -87,13 +95,15 @@ export default function DoctorDashboard() {
   const fetchDoctorData = async () => {
     try {
       setLoading(true);
-      const [apptData, prescriptionData] = await Promise.all([
+      const [apptData, prescriptionData, docs] = await Promise.all([
         apiClient.getAppointments(),
         apiClient.getPrescriptions(),
+        apiClient.listDocuments(),
       ]);
 
       setAppointments(apptData);
       setPrescriptions(prescriptionData);
+      setDocuments(docs);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast.error("Failed to load data: " + errorMessage);
@@ -176,11 +186,16 @@ export default function DoctorDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Button variant="outline" onClick={() => navigate("/")}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
+        <div className="flex items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => navigate("/")}> 
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
+            </Button>
+            <h1 className="text-4xl font-bold">Doctor Dashboard</h1>
+          </div>
+          <Button variant="secondary" onClick={() => window.location.reload()} className="gap-2">
+            <RefreshCcw className="h-4 w-4" /> Refresh
           </Button>
-          <h1 className="text-4xl font-bold">Doctor Dashboard</h1>
         </div>
 
         {user && (
@@ -212,8 +227,10 @@ export default function DoctorDashboard() {
           </Card>
         )}
 
+        {/* Security moved into its own tab below */}
+
         <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="appointments">
               <Calendar className="mr-2 h-4 w-4" />
               Appointments
@@ -225,6 +242,14 @@ export default function DoctorDashboard() {
             <TabsTrigger value="prescriptions">
               <FileText className="mr-2 h-4 w-4" />
               Prescriptions
+            </TabsTrigger>
+            <TabsTrigger value="documents">
+              <Paperclip className="mr-2 h-4 w-4" />
+              Documents
+            </TabsTrigger>
+            <TabsTrigger value="security">
+              <Lock className="mr-2 h-4 w-4" />
+              Security
             </TabsTrigger>
           </TabsList>
 
@@ -238,67 +263,26 @@ export default function DoctorDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
+                      <TableHead>Start</TableHead>
                       <TableHead>Patient</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Notes</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {appointments.map((apt) => (
                       <TableRow key={apt.id}>
-                        <TableCell>{formatDate(apt.startAt)}</TableCell>
-                        <TableCell>{formatTime(apt.startAt)}</TableCell>
+                        <TableCell>{formatDate(apt.startAt)} {apt.endAt ? `- ${formatTime(apt.startAt)}` : ''}</TableCell>
                         <TableCell>{apt.patient?.name || "N/A"}</TableCell>
                         <TableCell>
                           <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(apt.status)}`}>
                             {apt.status}
                           </span>
                         </TableCell>
-                        <TableCell>{apt.notes || "-"}</TableCell>
-                        <TableCell className="space-x-2">
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              if (!apt.patient?.id) {
-                                toast.error('Patient information not available');
-                                return;
-                              }
-                              
-                              if (apt.status !== 'confirmed') {
-                                toast.error('Please confirm the appointment first');
-                                return;
-                              }
-
-                              if (!socket) {
-                                toast.error('Connection not available');
-                                return;
-                              }
-                              
-                              // Notify patient of incoming call
-                              socket.emit('notify:incoming:call', {
-                                patientId: apt.patient.id,
-                                doctorName: user?.name || 'Doctor',
-                                appointmentId: apt.id
-                              });
-                              
-                              // Navigate to video call page
-                              navigate(`/videocall/${apt.id}?remoteUserId=${apt.patient.id}`);
-                            }}
-                            className="gap-1"
-                            disabled={apt.status !== 'confirmed'}
-                          >
-                            <Video className="h-4 w-4" />
-                            Start Call
-                          </Button>
-                          <Select
-                            value={apt.status}
-                            onValueChange={(value) => updateAppointmentStatus(apt.id, value as Appointment["status"])}
-                          >
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
+                        <TableCell>
+                          <Select value={apt.status} onValueChange={(value) => updateAppointmentStatus(apt.id, value as Appointment["status"]) }>
+                            <SelectTrigger className="w-40">
+                              <SelectValue placeholder="Update status" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="requested">Requested</SelectItem>
@@ -426,6 +410,167 @@ export default function DoctorDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="documents">
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Upload Document</CardTitle>
+                  <CardDescription>PDF, images, or Word documents up to 10MB</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <Input
+                      type="file"
+                      accept="application/pdf,image/*,.doc,.docx"
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                    />
+                    <Button
+                      className="w-full"
+                      disabled={!selectedFile || uploading}
+                      onClick={async () => {
+                        if (!selectedFile) return;
+                        try {
+                          setUploading(true);
+                          const uploaded = await apiClient.uploadDocument(selectedFile);
+                          if (uploaded) {
+                            toast.success('Uploaded successfully');
+                            setSelectedFile(null);
+                            const fresh = await apiClient.listDocuments();
+                            setDocuments(fresh);
+                          } else {
+                            toast.error('Upload failed');
+                          }
+                        } catch (err) {
+                          toast.error('Upload error');
+                        } finally {
+                          setUploading(false);
+                        }
+                      }}
+                    >
+                      {uploading ? 'Uploading…' : 'Upload'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>My Documents</CardTitle>
+                  <CardDescription>Uploaded files</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {documents.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Size</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {documents.map((doc) => (
+                          <TableRow key={doc.id}>
+                            <TableCell className="max-w-[220px] truncate" title={doc.originalName}>{doc.originalName}</TableCell>
+                            <TableCell>{doc.mimeType || '-'}</TableCell>
+                            <TableCell>{(doc.size / 1024 / 1024).toFixed(2)} MB</TableCell>
+                            <TableCell>{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : '-'}</TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  const url = await apiClient.getDocumentDownloadUrl(doc.id);
+                                  if (url) {
+                                    window.open(url, '_blank');
+                                  } else {
+                                    toast.error('Failed to get download link');
+                                  }
+                                }}
+                              >
+                                View
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="security">
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <Label>Current Password</Label>
+                    <Input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>New Password</Label>
+                    <Input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Confirm New Password</Label>
+                    <Input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Button
+                    onClick={async () => {
+                      if (!currentPassword || !newPassword || !confirmPassword) {
+                        toast.error('Please fill all password fields');
+                        return;
+                      }
+                      if (newPassword.length < 6) {
+                        toast.error('New password must be at least 6 characters');
+                        return;
+                      }
+                      if (newPassword !== confirmPassword) {
+                        toast.error('Passwords do not match');
+                        return;
+                      }
+                      const res = await apiClient.changePassword(currentPassword, newPassword);
+                      if (res.success) {
+                        toast.success(res.message || 'Password changed');
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                      } else {
+                        toast.error(res.message || 'Failed to change password');
+                      }
+                    }}
+                  >
+                    Update Password
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

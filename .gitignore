@@ -7,10 +7,16 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-.env*
+# Environment files
 .env
-backend-refer/*
+.env.*
+!.env.example
 
+# Project-specific
+backend-refer/*
+updates3bucket.ps1
+
+# Node / build outputs
 node_modules
 dist
 dist-ssr
@@ -26,8 +32,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env
-.env.production
-.env
-.env
-.env

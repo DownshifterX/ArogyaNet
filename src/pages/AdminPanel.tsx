@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Users, Calendar, FileText, ArrowLeft, Shield } from "lucide-react";
+import { Users, Calendar, FileText, ArrowLeft, Shield, RefreshCcw, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function AdminPanel() {
@@ -18,6 +18,10 @@ export default function AdminPanel() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
+  // Change password form state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   useEffect(() => {
     if (user) {
@@ -27,7 +31,6 @@ export default function AdminPanel() {
 
   const fetchAdminData = async () => {
     try {
-      setLoading(true);
       const [fetchedUsers, fetchedAppointments, fetchedPrescriptions] = await Promise.all([
         apiClient.getUsers(),
         apiClient.getAppointments(),
@@ -37,15 +40,17 @@ export default function AdminPanel() {
       setUsers(fetchedUsers);
       setAppointments(fetchedAppointments);
       setPrescriptions(fetchedPrescriptions);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       console.error('Admin data fetch error:', error);
-      toast.error("Failed to load data: " + error.message);
+      toast.error("Failed to load data: " + msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: "patient" | "doctor" | "admin") => {
+  // Do not allow assigning 'admin' from the panel
+  const updateUserRole = async (userId: string, newRole: "patient" | "doctor") => {
     try {
       const updated = await apiClient.updateUserRole(userId, newRole);
       if (!updated) throw new Error("Unable to update role");
@@ -53,8 +58,9 @@ export default function AdminPanel() {
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, ...updated } : u))
       );
-    } catch (error: any) {
-      toast.error("Failed to update role: " + error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error("Failed to update role: " + msg);
     }
   };
 
@@ -66,8 +72,9 @@ export default function AdminPanel() {
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, ...updated } : u))
       );
-    } catch (error: any) {
-      toast.error("Failed to update approval: " + error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error("Failed to update approval: " + msg);
     }
   };
 
@@ -111,14 +118,19 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Button variant="outline" onClick={() => navigate("/")}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
+        <div className="flex items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => navigate("/")}> 
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
+            </Button>
+            <h1 className="text-4xl font-bold flex items-center gap-2">
+              <Shield className="h-8 w-8" />
+              Admin Panel
+            </h1>
+          </div>
+          <Button variant="secondary" onClick={() => window.location.reload()} className="gap-2">
+            <RefreshCcw className="h-4 w-4" /> Refresh
           </Button>
-          <h1 className="text-4xl font-bold flex items-center gap-2">
-            <Shield className="h-8 w-8" />
-            Admin Panel
-          </h1>
         </div>
 
         {user && (
@@ -190,7 +202,7 @@ export default function AdminPanel() {
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-md grid-cols-4">
             <TabsTrigger value="users">
               <Users className="mr-2 h-4 w-4" />
               Users
@@ -202,6 +214,10 @@ export default function AdminPanel() {
             <TabsTrigger value="prescriptions">
               <FileText className="mr-2 h-4 w-4" />
               Prescriptions
+            </TabsTrigger>
+            <TabsTrigger value="security">
+              <Lock className="mr-2 h-4 w-4" />
+              Security
             </TabsTrigger>
           </TabsList>
 
@@ -255,21 +271,24 @@ export default function AdminPanel() {
                           )}
                         </TableCell>
                         <TableCell>
+                          {managedUser.role === "admin" ? (
+                            <span className="text-xs text-muted-foreground">Not editable</span>
+                          ) : (
                             <Select
                               value={managedUser.role}
                               onValueChange={(value) =>
-                                updateUserRole(managedUser.id, value as "patient" | "doctor" | "admin")
+                                updateUserRole(managedUser.id, value as "patient" | "doctor")
                               }
                             >
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="patient">Patient</SelectItem>
-                              <SelectItem value="doctor">Doctor</SelectItem>
-                              <SelectItem value="admin">Admin</SelectItem>
-                            </SelectContent>
-                          </Select>
+                              <SelectTrigger className="w-32">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="patient">Patient</SelectItem>
+                                <SelectItem value="doctor">Doctor</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -349,6 +368,76 @@ export default function AdminPanel() {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="security">
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="text-sm text-muted-foreground">Current Password</label>
+                    <input
+                      type="password"
+                      className="mt-1 w-full border rounded-md p-2"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">New Password</label>
+                    <input
+                      type="password"
+                      className="mt-1 w-full border rounded-md p-2"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">Confirm New Password</label>
+                    <input
+                      type="password"
+                      className="mt-1 w-full border rounded-md p-2"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Button
+                    onClick={async () => {
+                      if (!currentPassword || !newPassword || !confirmPassword) {
+                        toast.error('Please fill all password fields');
+                        return;
+                      }
+                      if (newPassword.length < 6) {
+                        toast.error('New password must be at least 6 characters');
+                        return;
+                      }
+                      if (newPassword !== confirmPassword) {
+                        toast.error('Passwords do not match');
+                        return;
+                      }
+                      const res = await apiClient.changePassword(currentPassword, newPassword);
+                      if (res.success) {
+                        toast.success(res.message || 'Password changed');
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                      } else {
+                        toast.error(res.message || 'Failed to change password');
+                      }
+                    }}
+                    className="gap-2"
+                  >
+                    Update Password
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
