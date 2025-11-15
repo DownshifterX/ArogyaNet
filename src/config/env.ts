@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_URL = 'http://localhost:8090';
+const DEFAULT_BACKEND_URL = 'http://52.65.130.42:8090';
 
 // Get backend URL from environment variable, with fallback
 let backendUrl = (import.meta.env?.VITE_BACKEND_URL as string | undefined) ?? DEFAULT_BACKEND_URL;
@@ -25,24 +25,15 @@ if (socketUrl && !socketUrl.startsWith('http://') && !socketUrl.startsWith('http
   }
 }
 
-// STUN servers for WebRTC - can be customized via environment variables
-const DEFAULT_STUN_SERVERS = [
-  "stun:stun.l.google.com:19302",
-  "stun:global.stun.twilio.com:3478",
-  "stun:stun1.l.google.com:19302",
-  "stun:stun2.l.google.com:19302",
-  "stun:stun3.l.google.com:19302",
-  "stun:stun4.l.google.com:19302",
-];
-
-const stunServers = (import.meta.env?.VITE_STUN_SERVERS as string | undefined)
-  ? (import.meta.env.VITE_STUN_SERVERS as string).split(',').map(s => s.trim())
-  : DEFAULT_STUN_SERVERS;
+// TURN server configuration
+const turnApiUrl = import.meta.env?.VITE_TURN_API_URL as string | undefined;
+const iceRelayOnly = import.meta.env?.VITE_ICE_RELAY_ONLY === 'true';
 
 export const env = {
   backendUrl,
   socketUrl,
-  stunServers,
+  turnApiUrl,
+  iceRelayOnly,
 };
 
 export default env;

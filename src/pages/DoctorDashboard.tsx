@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Socket } from "socket.io-client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSocket } from "@/hooks/useSocket";
 import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import VideoCallRoom from "@/components/VideoCallRoom";
-import env from "@/config/env";
 
 const formatDate = (iso?: string) => {
   if (!iso) return "N/A";
@@ -46,10 +44,10 @@ const statusBadge = (status: Appointment["status"]) => {
 export default function DoctorDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const socket = useSocket();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [activeCall, setActiveCall] = useState<{ appointmentId: string; remoteUserId: string } | null>(null);
 
   const [selectedPatient, setSelectedPatient] = useState("");
@@ -59,52 +57,13 @@ export default function DoctorDashboard() {
 
   const isDoctorPendingApproval = user?.role === "doctor" && user.doctorApproved === false;
 
+  // Identify user with socket
   useEffect(() => {
-    // Initialize socket connection
-    let newSocket: Socket | null = null;
-
-    const initSocket = async () => {
-      try {
-        const { io } = await import("socket.io-client");
-        newSocket = io(env.socketUrl, {
-          withCredentials: true,
-          transports: ['websocket', 'polling'],
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          reconnectionAttempts: 5
-        });
-
-        newSocket.on("connect", () => {
-          console.log("✅ Doctor Socket connected:", newSocket?.id);
-          newSocket?.emit("identify", user?.id);
-        });
-
-        newSocket.on("disconnect", () => {
-          console.log("❌ Doctor Socket disconnected");
-        });
-
-        // Listen for patient accepting the call
-        newSocket.on("callAccepted", (data: Record<string, unknown>) => {
-          console.log("✅ Patient accepted call:", data);
-        });
-
-        setSocket(newSocket);
-      } catch (error) {
-        console.error("Socket initialization error:", error);
-      }
-    };
-
-    if (user?.id) {
-      initSocket();
+    if (socket && user?.id) {
+      socket.emit('identify', user.id);
+      console.log('👤 Doctor identified - User ID:', user.id, 'Socket ID:', socket.id);
     }
-
-    return () => {
-      if (newSocket) {
-        newSocket.disconnect();
-      }
-    };
-  }, [user?.id]);
+  }, [socket, user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -303,27 +262,36 @@ export default function DoctorDashboard() {
                           <Button
                             size="sm"
                             onClick={() => {
-                              console.log('📱 Call button clicked');
-                              console.log('👤 apt.patient?.id:', apt.patient?.id);
-                              console.log('🔌 socket:', socket);
-                              if (apt.patient?.id && socket) {
-                                // Emit incoming video call notification to patient
-                                console.log('📞 Emitting incomingVideoCall');
-                                socket.emit('incomingVideoCall', {
-                                  remoteUserId: apt.patient.id,
-                                  callerName: user?.name || 'Doctor',
-                                  appointmentId: apt.id
-                                });
-                                console.log('✅ incomingVideoCall emitted');
-                                setActiveCall({ appointmentId: apt.id, remoteUserId: apt.patient.id });
-                              } else {
-                                console.log('❌ Missing patient ID or socket connection');
+                              if (!apt.patient?.id) {
+                                toast.error('Patient information not available');
+                                return;
                               }
+                              
+                              if (apt.status !== 'confirmed') {
+                                toast.error('Please confirm the appointment first');
+                                return;
+                              }
+
+                              if (!socket) {
+                                toast.error('Connection not available');
+                                return;
+                              }
+                              
+                              // Notify patient of incoming call
+                              socket.emit('notify:incoming:call', {
+                                patientId: apt.patient.id,
+                                doctorName: user?.name || 'Doctor',
+                                appointmentId: apt.id
+                              });
+                              
+                              // Navigate to video call page
+                              navigate(`/videocall/${apt.id}?remoteUserId=${apt.patient.id}`);
                             }}
                             className="gap-1"
+                            disabled={apt.status !== 'confirmed'}
                           >
                             <Video className="h-4 w-4" />
-                            Call
+                            Start Call
                           </Button>
                           <Select
                             value={apt.status}
@@ -462,16 +430,7 @@ export default function DoctorDashboard() {
         </Tabs>
       </div>
 
-      {/* Video Call Room */}
-      {activeCall && socket && user && (
-        <VideoCallRoom
-          socket={socket}
-          userId={user.id}
-          appointmentId={activeCall.appointmentId}
-          isInitiator={true}
-          onCallEnd={() => setActiveCall(null)}
-        />
-      )}
+
     </div>
   );
 }

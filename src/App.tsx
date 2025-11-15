@@ -4,43 +4,35 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { SocketProvider } from "@/hooks/useSocket";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { useEffect, useState } from "react";
+import { IncomingCallNotification } from "@/components/IncomingCallNotification";
 import Index from "./pages/Index";
+import AppErrorBoundary from "@/components/AppErrorBoundary";
 import Auth from "./pages/Auth";
 import DoctorDashboard from "./pages/DoctorDashboard";
 import PatientDashboard from "./pages/PatientDashboard";
 import AdminPanel from "./pages/AdminPanel";
 import BookAppointment from "./pages/BookAppointment";
+import VideoCallPage from "./pages/VideoCallPage";
 import NotFound from "./pages/NotFound";
-
 
 const queryClient = new QueryClient();
 
-interface IncomingCallData {
-  callerId: string;
-  callerName: string;
-  appointmentId: string;
-}
-
 const App = () => {
-  const [socket] = useState<Record<string, unknown> | null>(null);
-  const [incomingCall] = useState<IncomingCallData | null>(null);
-
-  useEffect(() => {
-    // Socket.io will be initialized later after auth
-    // This is just a placeholder for now
-  }, []);
-
+  console.log('test123');
+  
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              
+          <SocketProvider>
+            <AppErrorBoundary>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <IncomingCallNotification />
+                <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
               <Route
@@ -75,10 +67,20 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/videocall/:appointmentId"
+                element={
+                  <ProtectedRoute allowedRoles={["doctor", "patient"]}>
+                    <VideoCallPage />
+                  </ProtectedRoute>
+                }
+              />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
+                <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+            </AppErrorBoundary>
+          </SocketProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

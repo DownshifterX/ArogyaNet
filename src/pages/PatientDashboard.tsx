@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import type { Socket } from "socket.io-client";
 import { useAuth } from "@/hooks/useAuth";
 import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,8 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Calendar, FileText, ArrowLeft, Clock, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import VideoCallRoom from "@/components/VideoCallRoom";
-import env from "@/config/env";
+import VideoCall from "@/components/VideoCall";
+import { useSocket } from "@/hooks/useSocket";
 
 export default function PatientDashboard() {
   const { user } = useAuth();
@@ -22,8 +21,9 @@ export default function PatientDashboard() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [doctors, setDoctors] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const socket = useSocket();
   const [incomingCall, setIncomingCall] = useState<{ callerName: string; appointmentId: string; callerId: string } | null>(null);
+  const [pendingOffer, setPendingOffer] = useState<any>(null);
   const [activeCall, setActiveCall] = useState<{ appointmentId: string; remoteUserId: string } | null>(null);
   const [activeTab, setActiveTab] = useState("appointments");
 
@@ -39,52 +39,26 @@ export default function PatientDashboard() {
     setIncomingCall(callData);
     toast.info(`${callData.callerName} is calling...`);
     console.log("✅ setIncomingCall triggered");
-  }, []);
+  }, []); // Empty deps - this callback should be stable
 
   useEffect(() => {
-    // Initialize socket connection
-    let newSocket: Socket | null = null;
-
-    const initSocket = async () => {
-      try {
-        const { io } = await import("socket.io-client");
-        newSocket = io(env.socketUrl, {
-          withCredentials: true,
-          transports: ['websocket', 'polling'],
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          reconnectionAttempts: 5
-        });
-
-        newSocket.on("connect", () => {
-          console.log("✅ Socket connected:", newSocket?.id);
-          newSocket?.emit("identify", user?.id);
-        });
-
-        newSocket.on("disconnect", () => {
-          console.log("❌ Socket disconnected");
-        });
-        
-        // Listen for incoming video calls
-        newSocket.on("incomingVideoCall", handleIncomingCall);
-        
-        setSocket(newSocket);
-      } catch (error) {
-        console.error("Socket initialization error:", error);
-      }
-    };
-
-    if (user?.id) {
-      initSocket();
+    if (socket && user?.id) {
+      socket.emit("identify", user.id);
+      console.log("👤 Patient identified - User ID:", user.id, "Socket ID:", socket.id);
     }
+  }, [socket, user?.id]);
 
-    return () => {
-      if (newSocket) {
-        newSocket.disconnect();
-      }
+  // Listen for new schema notifications and reflect in dashboard tab
+  useEffect(() => {
+    if (!socket) return;
+    const onIncoming = (data: { doctorName: string; appointmentId: string; doctorUserId: string }) => {
+      console.log("📥 notification:incoming:call (PatientDashboard)", data);
+      setIncomingCall({ callerName: data.doctorName, appointmentId: data.appointmentId, callerId: data.doctorUserId });
+      setActiveTab("video");
     };
-  }, [user?.id, handleIncomingCall]);
+    socket.on('notification:incoming:call', onIncoming);
+    return () => { socket.off('notification:incoming:call', onIncoming); };
+  }, [socket]);
 
   // Debug: Log when incomingCall changes
   useEffect(() => {
@@ -371,19 +345,35 @@ export default function PatientDashboard() {
                         Decline
                       </Button>
                       <Button
-                        onClick={() => {
-                          const doctorId = appointments.find(a => a.id === incomingCall.appointmentId)?.doctor?.id;
-                          if (doctorId) {
-                            // Notify doctor that patient accepted the call
-                            if (socket) {
-                              console.log("✅ Patient accepting call, notifying doctor");
-                              socket.emit("callAccepted", {
-                                remoteUserId: doctorId,
-                                appointmentId: incomingCall.appointmentId,
-                              });
-                            }
-                            setActiveCall({ appointmentId: incomingCall.appointmentId, remoteUserId: doctorId });
+                        onClick={async () => {
+                          const doctorId = appointments.find(a => a.id === incomingCall.appointmentId)?.doctor?.id || incomingCall.callerId;
+                          if (!doctorId || !socket) {
+                            console.error("❌ Cannot accept call: missing doctorId or socket");
+                            console.error("   doctorId:", doctorId, "socket:", socket, "socket.connected:", socket?.connected);
+                            toast.error("Cannot accept call: Connection issue");
+                            return;
                           }
+
+                          if (!socket.connected) {
+                            console.error("❌ Socket not connected");
+                            toast.error("Not connected to server. Please wait...");
+                            return;
+                          }
+
+                          console.log("✅ Patient accepting call, notifying doctor");
+                          console.log("📞 Doctor ID:", doctorId, "Appointment ID:", incomingCall.appointmentId);
+                          console.log("📞 Socket ID:", socket.id, "Socket connected:", socket.connected);
+                          
+                          // Emit callAccepted FIRST before changing state (to avoid socket disconnect)
+                          socket.emit("call:accepted", {
+                            to: doctorId,
+                            ans: { accepted: true, appointmentId: incomingCall.appointmentId },
+                          });
+                          console.log("✅ call:accepted event emitted to doctor");
+                          
+                          // Then show VideoCall component - it will wait for the offer
+                          setActiveCall({ appointmentId: incomingCall.appointmentId, remoteUserId: doctorId });
+                          setIncomingCall(null);
                         }}
                         className="flex-1"
                       >
@@ -410,18 +400,24 @@ export default function PatientDashboard() {
         </Tabs>
       </div>
 
-      {/* Video Call Room */}
-      {activeCall && socket && user && (
-        <VideoCallRoom
-          socket={socket}
-          userId={user.id}
-          appointmentId={activeCall.appointmentId}
-          isInitiator={false}
-          onCallEnd={() => {
-            setActiveCall(null);
-            setIncomingCall(null);
-          }}
-        />
+      {/* Video Call Modal */}
+      {activeCall && socket && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-2xl">
+            <VideoCall
+              remoteUserId={activeCall.remoteUserId}
+              appointmentId={activeCall.appointmentId}
+              socket={socket}
+              isInitiator={false}
+              initialOffer={pendingOffer}
+              onCallEnd={() => {
+                setActiveCall(null);
+                setIncomingCall(null);
+                setPendingOffer(null);
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
