@@ -13,8 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import VideoCall from "@/components/VideoCall";
-import { env } from "@/config/env";
+import VideoCallRoom from "@/components/VideoCallRoom";
+import env from "@/config/env";
 
 const formatDate = (iso?: string) => {
   if (!iso) return "N/A";
@@ -462,19 +462,15 @@ export default function DoctorDashboard() {
         </Tabs>
       </div>
 
-      {/* Video Call Modal */}
-      {activeCall && socket && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-2xl">
-            <VideoCall
-              remoteUserId={activeCall.remoteUserId}
-              appointmentId={activeCall.appointmentId}
-              socket={socket}
-              isInitiator={true}
-              onCallEnd={() => setActiveCall(null)}
-            />
-          </div>
-        </div>
+      {/* Video Call Room */}
+      {activeCall && socket && user && (
+        <VideoCallRoom
+          socket={socket}
+          userId={user.id}
+          appointmentId={activeCall.appointmentId}
+          isInitiator={true}
+          onCallEnd={() => setActiveCall(null)}
+        />
       )}
     </div>
   );

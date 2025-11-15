@@ -14,6 +14,7 @@ import AdminPanel from "./pages/AdminPanel";
 import BookAppointment from "./pages/BookAppointment";
 import NotFound from "./pages/NotFound";
 
+
 const queryClient = new QueryClient();
 
 interface IncomingCallData {
@@ -39,6 +40,7 @@ const App = () => {
           <Sonner />
           <BrowserRouter>
             <Routes>
+              
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
               <Route

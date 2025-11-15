@@ -12,8 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Calendar, FileText, ArrowLeft, Clock, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import VideoCall from "@/components/VideoCall";
-import { env } from "@/config/env";
+import VideoCallRoom from "@/components/VideoCallRoom";
+import env from "@/config/env";
 
 export default function PatientDashboard() {
   const { user } = useAuth();
@@ -374,18 +374,15 @@ export default function PatientDashboard() {
                         onClick={() => {
                           const doctorId = appointments.find(a => a.id === incomingCall.appointmentId)?.doctor?.id;
                           if (doctorId) {
-                            setActiveCall({ appointmentId: incomingCall.appointmentId, remoteUserId: doctorId });
+                            // Notify doctor that patient accepted the call
                             if (socket) {
                               console.log("✅ Patient accepting call, notifying doctor");
                               socket.emit("callAccepted", {
                                 remoteUserId: doctorId,
                                 appointmentId: incomingCall.appointmentId,
                               });
-                              socket.emit("requestOffer", {
-                                remoteUserId: doctorId,
-                                appointmentId: incomingCall.appointmentId,
-                              });
                             }
+                            setActiveCall({ appointmentId: incomingCall.appointmentId, remoteUserId: doctorId });
                           }
                         }}
                         className="flex-1"
@@ -413,22 +410,18 @@ export default function PatientDashboard() {
         </Tabs>
       </div>
 
-      {/* Video Call Modal */}
-      {activeCall && socket && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-2xl">
-            <VideoCall
-              remoteUserId={activeCall.remoteUserId}
-              appointmentId={activeCall.appointmentId}
-              socket={socket}
-              isInitiator={false}
-              onCallEnd={() => {
-                setActiveCall(null);
-                setIncomingCall(null);
-              }}
-            />
-          </div>
-        </div>
+      {/* Video Call Room */}
+      {activeCall && socket && user && (
+        <VideoCallRoom
+          socket={socket}
+          userId={user.id}
+          appointmentId={activeCall.appointmentId}
+          isInitiator={false}
+          onCallEnd={() => {
+            setActiveCall(null);
+            setIncomingCall(null);
+          }}
+        />
       )}
     </div>
   );

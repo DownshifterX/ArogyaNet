@@ -4,7 +4,7 @@ import { useWebRTC } from '@/hooks/useWebRTC';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Phone, PhoneOff, Maximize2, Minimize2, Mic, MicOff, Video, VideoOff, X } from 'lucide-react';
+import { Phone, PhoneOff, Maximize2, Minimize2, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 
 interface VideoCallProps {
   remoteUserId: string;
@@ -110,7 +110,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, getLocalStream, setCallState]);
 
-
   const handleEndCall = useCallback(async () => {
     try {
       // Save call duration
@@ -130,23 +129,13 @@ const VideoCall: React.FC<VideoCallProps> = ({
     }
   }, [appointmentId, callDuration, socket, closePeerConnection, stopLocalStream, onCallEnd]);
 
-  const handleIncomingOffer = useCallback(async (data: any) => {
-    const offer = data?.offer ?? data;
+  const handleIncomingOffer = useCallback(async (offer: any) => {
     console.log('📥 Incoming offer received:', offer);
-    if (!offer) {
-      console.warn('⚠️ Incoming offer payload missing `offer`');
-      return;
-    }
     setIncomingOffer(offer);
   }, []);
 
   const handleIncomingAnswer = useCallback(
-    async (data: any) => {
-      const answer = data?.answer ?? data;
-      if (!answer) {
-        console.warn('⚠️ Incoming answer payload missing `answer`');
-        return;
-      }
+    async (answer: any) => {
       try {
         await setRemoteDescription(answer);
       } catch (err) {
@@ -157,12 +146,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
   );
 
   const handleIncomingIceCandidate = useCallback(
-    async (data: any) => {
-      const candidate = data?.candidate ?? data;
-      if (!candidate) {
-        console.warn('⚠️ Incoming ICE payload missing `candidate`');
-        return;
-      }
+    async (candidate: any) => {
       try {
         await addIceCandidate(candidate);
       } catch (err) {
@@ -219,24 +203,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
       alert('Failed to start call');
     }
   }, [remoteUserId, appointmentId, socket, createPeerConnection, createDataChannel, createOffer, setCallState]);
-
-  useEffect(() => {
-    if (!socket || !isInitiator) return;
-
-    const handleOfferRequest = () => {
-      console.log('📨 Offer requested by remote participant');
-      if (callState === 'calling' || callState === 'connected') {
-        return;
-      }
-      handleStartCall();
-    };
-
-    socket.on('requestOffer', handleOfferRequest);
-
-    return () => {
-      socket.off('requestOffer', handleOfferRequest);
-    };
-  }, [socket, isInitiator, handleStartCall, callState]);
 
   const handleAcceptCall = useCallback(async () => {
     if (!incomingOffer) return;
@@ -318,28 +284,6 @@ const VideoCall: React.FC<VideoCallProps> = ({
       <div className="flex flex-col h-full">
         {/* Video Container */}
         <div className="flex-1 relative">
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/40 via-transparent to-black/60" />
-
-          <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
-            <span className="px-3 py-1 rounded-full bg-white/10 text-white text-xs uppercase tracking-wide border border-white/20">
-              {callState === 'connected'
-                ? 'Live'
-                : callState === 'calling'
-                  ? 'Connecting'
-                  : callState === 'idle'
-                    ? 'Ready'
-                    : callState}
-            </span>
-            <Button
-              onClick={handleEndCall}
-              variant="secondary"
-              size="icon"
-              className="bg-black/50 hover:bg-black/70 text-white border border-white/10"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-
           {/* Remote Video */}
           <video
             ref={remoteVideoRef}
@@ -349,7 +293,7 @@ const VideoCall: React.FC<VideoCallProps> = ({
           />
 
           {/* Local Video */}
-          <div className="absolute bottom-4 right-4 w-36 h-28 bg-gray-900 rounded-lg overflow-hidden border border-white/40 shadow-xl backdrop-blur-sm">
+          <div className="absolute bottom-4 right-4 w-32 h-24 bg-gray-900 rounded-lg overflow-hidden border-2 border-white shadow-lg">
             <video
               ref={localVideoRef}
               autoPlay
@@ -407,25 +351,18 @@ const VideoCall: React.FC<VideoCallProps> = ({
         )}
 
         {/* Control Bar */}
-        <div className="bg-gray-900 border-t border-gray-700 p-4 flex justify-between items-center gap-4">
-          <div className="text-white/70 text-sm">
-            {callState === 'connected'
-              ? 'Call in progress'
-              : callState === 'calling'
-                ? 'Attempting to connect…'
-                : callState === 'idle'
-                  ? isInitiator
-                    ? 'Waiting for patient to join…'
-                    : 'Waiting for incoming call…'
-                  : callState}
-          </div>
-
+        <div className="bg-gray-900 border-t border-gray-700 p-4 flex justify-center items-center gap-4">
           {callState === 'idle' && !incomingOffer && (
             <>
               {isInitiator ? (
-                <div className="text-white text-sm">
-                  Waiting for patient to accept the call...
-                </div>
+                <Button
+                  onClick={handleStartCall}
+                  className="bg-green-600 hover:bg-green-700"
+                  size="lg"
+                >
+                  <Phone className="w-5 h-5 mr-2" />
+                  Start Call
+                </Button>
               ) : (
                 <div className="text-white text-sm">Waiting for incoming call...</div>
               )}
