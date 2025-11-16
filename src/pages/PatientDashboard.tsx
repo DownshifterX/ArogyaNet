@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { apiClient, type Appointment, type Prescription, type User, type MedicalDocument } from "@/api/client";
+import { apiClient, type Appointment, type Prescription, type User, type MedicalDocument, type LiverMeasurements, type LiverAssessment } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ export default function PatientDashboard() {
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
+  const [assessments, setAssessments] = useState<LiverAssessment[]>([]);
   const socket = useSocket();
   const [incomingCall, setIncomingCall] = useState<{ callerName: string; appointmentId: string; callerId: string } | null>(null);
   const [activeCall, setActiveCall] = useState<{ appointmentId: string; remoteUserId: string } | null>(null);
@@ -32,6 +33,19 @@ export default function PatientDashboard() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  // Health measurements form
+  const [meas, setMeas] = useState<LiverMeasurements>({
+    Age: 0,
+    TB: 0,
+    DB: 0,
+    ALKP: 0,
+    SGPT: 0,
+    SGOT: 0,
+    TP: 0,
+    ALB: 0,
+    AGR: 0,
+    Gender: 0,
+  });
 
   // New appointment form state
   const [selectedDoctor, setSelectedDoctor] = useState("");
@@ -83,17 +97,19 @@ export default function PatientDashboard() {
 
   const fetchPatientData = async () => {
     try {
-      const [apptData, prescriptionData, doctorData, docs] = await Promise.all([
+      const [apptData, prescriptionData, doctorData, docs, asmts] = await Promise.all([
         apiClient.getAppointments(),
         apiClient.getPrescriptions(),
         apiClient.getDoctors(),
         apiClient.listDocuments(),
+        apiClient.listLiverAssessments(),
       ]);
 
       setAppointments(apptData || []);
       setPrescriptions(prescriptionData || []);
       setDoctors(doctorData || []);
       setDocuments(docs || []);
+      setAssessments(asmts || []);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast.error("Failed to load data: " + errorMessage);
@@ -194,7 +210,7 @@ export default function PatientDashboard() {
         {/* Security moved into its own tab below */}
 
         <Tabs defaultValue="appointments" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="appointments">
               <Calendar className="mr-2 h-4 w-4" />
               Appointments
@@ -210,6 +226,9 @@ export default function PatientDashboard() {
             <TabsTrigger value="documents">
               <Paperclip className="mr-2 h-4 w-4" />
               Documents
+            </TabsTrigger>
+            <TabsTrigger value="health">
+              🩺 Health
             </TabsTrigger>
             <TabsTrigger value="security">
               <Lock className="mr-2 h-4 w-4" />
@@ -532,6 +551,129 @@ export default function PatientDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="health">
+            <Card>
+              <CardHeader>
+                <CardTitle>Liver Health Assessment</CardTitle>
+                <CardDescription>Enter your latest readings. Your doctor can review results; you won't see the prediction here.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form
+                  className="grid gap-4 md:grid-cols-3"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      // Simple validation
+                      if (meas.Age <= 0) {
+                        toast.error('Age must be greater than 0');
+                        return;
+                      }
+                      const submitted = await apiClient.submitLiverAssessment(meas);
+                      if (submitted) {
+                        toast.success('Assessment submitted');
+                        setMeas({ Age: 0, TB: 0, DB: 0, ALKP: 0, SGPT: 0, SGOT: 0, TP: 0, ALB: 0, AGR: 0, Gender: 0 });
+                      } else {
+                        toast.error('Failed to submit assessment');
+                      }
+                    } catch (err) {
+                      toast.error('Submission error');
+                    }
+                  }}
+                >
+                  <div>
+                    <Label>Age</Label>
+                    <Input type="number" value={meas.Age} onChange={(e) => setMeas({ ...meas, Age: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>Total Bilirubin (TB)</Label>
+                    <Input type="number" step="0.01" value={meas.TB} onChange={(e) => setMeas({ ...meas, TB: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>Direct Bilirubin (DB)</Label>
+                    <Input type="number" step="0.01" value={meas.DB} onChange={(e) => setMeas({ ...meas, DB: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>Alk Phosphatase (ALKP)</Label>
+                    <Input type="number" value={meas.ALKP} onChange={(e) => setMeas({ ...meas, ALKP: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>Alamine Aminotransferase (SGPT)</Label>
+                    <Input type="number" value={meas.SGPT} onChange={(e) => setMeas({ ...meas, SGPT: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>Aspartate Aminotransferase (SGOT)</Label>
+                    <Input type="number" value={meas.SGOT} onChange={(e) => setMeas({ ...meas, SGOT: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>Total Proteins (TP)</Label>
+                    <Input type="number" step="0.01" value={meas.TP} onChange={(e) => setMeas({ ...meas, TP: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>Albumin (ALB)</Label>
+                    <Input type="number" step="0.01" value={meas.ALB} onChange={(e) => setMeas({ ...meas, ALB: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <Label>A/G Ratio (AGR)</Label>
+                    <Input type="number" step="0.01" value={meas.AGR} onChange={(e) => setMeas({ ...meas, AGR: Number(e.target.value) })} />
+                  </div>
+                  <div className="md:col-span-3">
+                    <Label>Gender</Label>
+                    <select
+                      className="w-full border rounded-md p-2"
+                      value={meas.Gender}
+                      onChange={(e) => setMeas({ ...meas, Gender: Number(e.target.value) })}
+                    >
+                      <option value={0}>Male</option>
+                      <option value={1}>Female</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-3">
+                    <Button type="submit" className="w-full">Submit Assessment</Button>
+                  </div>
+                </form>
+                <div className="mt-8">
+                  <div className="font-semibold mb-2">Your Past Submissions</div>
+                  {assessments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No assessments yet.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>TB</TableHead>
+                          <TableHead>DB</TableHead>
+                          <TableHead>ALKP</TableHead>
+                          <TableHead>SGPT</TableHead>
+                          <TableHead>SGOT</TableHead>
+                          <TableHead>TP</TableHead>
+                          <TableHead>ALB</TableHead>
+                          <TableHead>AGR</TableHead>
+                          <TableHead>Gender</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {assessments.map((a) => (
+                          <TableRow key={a.id}>
+                            <TableCell>{new Date(a.createdAt).toLocaleString()}</TableCell>
+                            <TableCell>{a.measurements.TB}</TableCell>
+                            <TableCell>{a.measurements.DB}</TableCell>
+                            <TableCell>{a.measurements.ALKP}</TableCell>
+                            <TableCell>{a.measurements.SGPT}</TableCell>
+                            <TableCell>{a.measurements.SGOT}</TableCell>
+                            <TableCell>{a.measurements.TP}</TableCell>
+                            <TableCell>{a.measurements.ALB}</TableCell>
+                            <TableCell>{a.measurements.AGR}</TableCell>
+                            <TableCell>{a.measurements.Gender === 0 ? 'Male' : 'Female'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="security">

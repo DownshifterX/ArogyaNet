@@ -40,6 +40,39 @@ export interface MedicalDocument {
   mimeType: string;
   size: number;
   url: string;
+  patientId?: string;
+  patientName?: string | null;
+  patientEmail?: string | null;
+  createdAt: string;
+}
+
+export interface LiverMeasurements {
+  Age: number;
+  TB: number;
+  DB: number;
+  ALKP: number;
+  SGPT: number;
+  SGOT: number;
+  TP: number;
+  ALB: number;
+  AGR: number;
+  Gender: number; // 0 or 1
+}
+
+export interface LiverAssessmentResult {
+  prediction?: number;
+  prediction_label?: string;
+  probability?: { no_disease?: number; disease?: number };
+  confidence?: number;
+}
+
+export interface LiverAssessment {
+  id: string;
+  patientId?: string;
+  patientName?: string | null;
+  patientEmail?: string | null;
+  measurements: LiverMeasurements;
+  result?: LiverAssessmentResult | null;
   createdAt: string;
 }
 
@@ -55,48 +88,62 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-const parseUser = (raw: any | null | undefined): User | null => {
-  if (!raw) return null;
+const parseUser = (raw: unknown): User | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const id = (r.id ?? r._id) as string | undefined;
   return {
-    id: raw.id ?? raw._id ?? '',
-    name: raw.name ?? raw.full_name ?? '',
-    email: raw.email ?? '',
-    role: raw.role ?? 'patient',
-    doctorApproved: raw.doctorApproved ?? raw.doctor_approved ?? undefined,
-    phone: raw.phone ?? undefined,
+    id: id ?? '',
+    name: (r.name ?? r.full_name ?? '') as string,
+    email: (r.email ?? '') as string,
+    role: (r.role ?? 'patient') as User['role'],
+    doctorApproved: (r.doctorApproved ?? r.doctor_approved) as boolean | undefined,
+    phone: (r.phone ?? undefined) as string | undefined,
   };
 };
 
-const parseAppointment = (raw: any): Appointment => ({
-  id: raw.id ?? raw._id ?? '',
-  startAt: raw.startAt ?? raw.start_at ?? '',
-  endAt: raw.endAt ?? raw.end_at ?? undefined,
-  status: raw.status ?? 'requested',
-  notes: raw.notes ?? undefined,
-  patient: parseUser(raw.patient),
-  doctor: parseUser(raw.doctor),
-  createdAt: raw.createdAt,
-  updatedAt: raw.updatedAt,
-});
+const parseAppointment = (raw: unknown): Appointment => {
+  const r = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
+  return {
+    id: (r.id ?? r._id ?? '') as string,
+    startAt: (r.startAt ?? r.start_at ?? '') as string,
+    endAt: (r.endAt ?? r.end_at ?? undefined) as string | undefined,
+    status: (r.status ?? 'requested') as Appointment['status'],
+    notes: (r.notes ?? undefined) as string | undefined,
+    patient: parseUser(r.patient),
+    doctor: parseUser(r.doctor),
+    createdAt: r.createdAt as string | undefined,
+    updatedAt: r.updatedAt as string | undefined,
+  };
+};
 
-const parsePrescription = (raw: any): Prescription => ({
-  id: raw.id ?? raw._id ?? '',
-  medication: raw.medication ?? '',
-  dosage: raw.dosage ?? '',
-  instructions: raw.instructions ?? null,
-  patient: parseUser(raw.patient),
-  doctor: parseUser(raw.doctor),
-  createdAt: raw.createdAt ?? new Date().toISOString(),
-});
+const parsePrescription = (raw: unknown): Prescription => {
+  const r = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
+  return {
+    id: (r.id ?? r._id ?? '') as string,
+    medication: (r.medication ?? '') as string,
+    dosage: (r.dosage ?? '') as string,
+    instructions: (r.instructions ?? null) as string | null,
+    patient: parseUser(r.patient),
+    doctor: parseUser(r.doctor),
+    createdAt: (r.createdAt ?? new Date().toISOString()) as string,
+  };
+};
 
-const parseDocument = (raw: any): MedicalDocument => ({
-  id: raw.id ?? raw._id ?? '',
-  originalName: raw.originalName ?? '',
-  mimeType: raw.mimeType ?? '',
-  size: raw.size ?? 0,
-  url: raw.url ?? '',
-  createdAt: raw.createdAt ?? new Date().toISOString(),
-});
+const parseDocument = (raw: unknown): MedicalDocument => {
+  const r = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {};
+  return {
+    id: (r.id ?? r._id ?? '') as string,
+    originalName: (r.originalName ?? '') as string,
+    mimeType: (r.mimeType ?? '') as string,
+    size: (r.size ?? 0) as number,
+    url: (r.url ?? '') as string,
+    patientId: (r.patientId ?? undefined) as string | undefined,
+    patientName: (r.patientName ?? null) as string | null,
+    patientEmail: (r.patientEmail ?? null) as string | null,
+    createdAt: (r.createdAt ?? new Date().toISOString()) as string,
+  };
+};
 
 export const apiClient = {
   // Auth endpoints
@@ -379,7 +426,7 @@ export const apiClient = {
     }
   },
 
-  async uploadDocument(file: File, doctorId?: string): Promise<MedicalDocument | null> {
+  async uploadDocument(file: File): Promise<MedicalDocument | null> {
     try {
       // Step 1: Get presigned upload URL from backend
       const urlRes = await fetch(`${BACKEND_URL}/api/documents/upload-url`, {
@@ -390,7 +437,6 @@ export const apiClient = {
           originalName: file.name,
           mimeType: file.type,
           size: file.size,
-          doctorId,
         }),
       });
 
@@ -411,7 +457,9 @@ export const apiClient = {
       });
 
       if (!uploadRes.ok) {
-        throw new Error('Failed to upload to S3');
+        const bodyText = await uploadRes.text().catch(() => '');
+        console.error('S3 upload failed', { status: uploadRes.status, body: bodyText });
+        throw new Error(`Failed to upload to S3 (${uploadRes.status})`);
       }
 
       // Step 3: Confirm upload with backend to save metadata
@@ -424,7 +472,6 @@ export const apiClient = {
           originalName: file.name,
           mimeType: file.type,
           size: file.size,
-          doctorId,
         }),
       });
 
@@ -469,8 +516,62 @@ export const apiClient = {
     }
   },
 
+  // Liver Assessments (Health data)
+  async submitLiverAssessment(measurements: LiverMeasurements): Promise<LiverAssessment | null> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/assessments/liver`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(measurements),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Failed to submit assessment');
+      }
+      const data = await res.json();
+      const a = data.assessment;
+      return a ? {
+        id: a.id ?? a._id ?? '',
+        patientId: a.patientId ?? undefined,
+        patientName: a.patientName ?? null,
+        patientEmail: a.patientEmail ?? null,
+        measurements: a.measurements,
+        result: a.result ?? null,
+        createdAt: a.createdAt ?? new Date().toISOString(),
+      } as LiverAssessment : null;
+    } catch (err) {
+      console.error('Error submitting liver assessment:', err);
+      return null;
+    }
+  },
+
+  async listLiverAssessments(): Promise<LiverAssessment[]> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/assessments/liver`, {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const arr = Array.isArray(data?.assessments) ? data.assessments : [];
+      return arr.map((a) => ({
+        id: a.id ?? a._id ?? '',
+        patientId: a.patientId ?? undefined,
+        patientName: a.patientName ?? null,
+        patientEmail: a.patientEmail ?? null,
+        measurements: a.measurements,
+        result: a.result ?? null,
+        createdAt: a.createdAt ?? new Date().toISOString(),
+      } as LiverAssessment));
+    } catch (err) {
+      console.error('Error listing liver assessments:', err);
+      return [];
+    }
+  },
+
   // Video endpoints
-  async initiateVideoCall(recipientId: string): Promise<any> {
+  async initiateVideoCall(recipientId: string): Promise<Record<string, unknown> | null> {
     try {
       const res = await fetch(`${BACKEND_URL}/api/video/initiate`, {
         method: 'POST',
@@ -479,7 +580,7 @@ export const apiClient = {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to initiate video call');
-      return res.json();
+  return (await res.json()) as Record<string, unknown>;
     } catch (err) {
       console.error('Error initiating video call:', err);
       return null;

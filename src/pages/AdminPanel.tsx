@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { apiClient, type Appointment, type Prescription, type User } from "@/api/client";
+import { apiClient, type Appointment, type Prescription, type User, type LiverAssessment } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Users, Calendar, FileText, ArrowLeft, Shield, RefreshCcw, Lock } from "lucide-react";
+import { Users, Calendar, FileText, ArrowLeft, Shield, RefreshCcw, Lock, ChevronDown, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function AdminPanel() {
@@ -18,6 +19,23 @@ export default function AdminPanel() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [assessments, setAssessments] = useState<LiverAssessment[]>([]);
+
+  // Group assessments by patient for admin view
+  const assessmentsByPatient = useMemo(() => {
+    const grouped = new Map<string, { patientName: string; patientEmail: string; items: LiverAssessment[] }>();
+    assessments.forEach((a) => {
+      const pid = a.patientId || 'unknown';
+      if (!grouped.has(pid)) {
+        grouped.set(pid, { patientName: a.patientName || 'Unknown Patient', patientEmail: a.patientEmail || '', items: [] });
+      }
+      grouped.get(pid)!.items.push(a);
+    });
+    for (const [, v] of grouped) {
+      v.items.sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
+    }
+    return Array.from(grouped.entries()).filter(([id]) => id !== 'unknown');
+  }, [assessments]);
   // Change password form state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -31,15 +49,17 @@ export default function AdminPanel() {
 
   const fetchAdminData = async () => {
     try {
-      const [fetchedUsers, fetchedAppointments, fetchedPrescriptions] = await Promise.all([
+      const [fetchedUsers, fetchedAppointments, fetchedPrescriptions, fetchedAssessments] = await Promise.all([
         apiClient.getUsers(),
         apiClient.getAppointments(),
         apiClient.getPrescriptions(),
+        apiClient.listLiverAssessments(),
       ]);
 
       setUsers(fetchedUsers);
       setAppointments(fetchedAppointments);
-      setPrescriptions(fetchedPrescriptions);
+  setPrescriptions(fetchedPrescriptions);
+  setAssessments(fetchedAssessments);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Admin data fetch error:', error);
@@ -202,7 +222,7 @@ export default function AdminPanel() {
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="users">
               <Users className="mr-2 h-4 w-4" />
               Users
@@ -214,6 +234,9 @@ export default function AdminPanel() {
             <TabsTrigger value="prescriptions">
               <FileText className="mr-2 h-4 w-4" />
               Prescriptions
+            </TabsTrigger>
+            <TabsTrigger value="health">
+              Health
             </TabsTrigger>
             <TabsTrigger value="security">
               <Lock className="mr-2 h-4 w-4" />
@@ -368,6 +391,110 @@ export default function AdminPanel() {
                     ))}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="health">
+            <Card>
+              <CardHeader>
+                <CardTitle>All Liver Assessments</CardTitle>
+                <CardDescription>Grouped by patient. Latest visible; past submissions collapsed.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {assessmentsByPatient.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No assessments available.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {assessmentsByPatient.map(([patientId, { patientName, patientEmail, items }]) => {
+                      const latest = items[0];
+                      return (
+                        <div key={patientId} className="border rounded-lg p-4 bg-muted/30">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{patientName}</span>
+                              <span className="text-xs text-muted-foreground">{patientEmail} · ID: {patientId}</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">{items.length} record{items.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="mt-3">
+                            <div className="font-semibold mb-2">Latest Assessment ({new Date(latest.createdAt).toLocaleString()})</div>
+                            <div className="grid md:grid-cols-5 gap-2 text-sm">
+                              <div>TB: {latest.measurements.TB}</div>
+                              <div>DB: {latest.measurements.DB}</div>
+                              <div>ALKP: {latest.measurements.ALKP}</div>
+                              <div>SGPT: {latest.measurements.SGPT}</div>
+                              <div>SGOT: {latest.measurements.SGOT}</div>
+                              <div>TP: {latest.measurements.TP}</div>
+                              <div>ALB: {latest.measurements.ALB}</div>
+                              <div>AGR: {latest.measurements.AGR}</div>
+                              <div>Age: {latest.measurements.Age}</div>
+                              <div>Gender: {latest.measurements.Gender === 0 ? 'Male' : 'Female'}</div>
+                            </div>
+                            {latest.result && (
+                              <div className="mt-3 text-sm">
+                                <div><strong>Prediction:</strong> {latest.result.prediction_label ?? latest.result.prediction}</div>
+                                {latest.result.probability && (
+                                  <div className="text-xs text-muted-foreground">Prob: no-disease {latest.result.probability.no_disease ?? '-'}, disease {latest.result.probability.disease ?? '-'}</div>
+                                )}
+                                {typeof latest.result.confidence === 'number' && (
+                                  <div className="text-xs text-muted-foreground">Confidence: {latest.result.confidence}</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {items.length > 1 && (
+                            <div className="mt-4">
+                              <Collapsible>
+                                <CollapsibleTrigger asChild>
+                                  <Button variant="outline" className="w-full justify-between">
+                                    <span>Show History ({items.length - 1})</span>
+                                    <ChevronDown className="h-4 w-4" />
+                                  </Button>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="mt-2">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>TB</TableHead>
+                                        <TableHead>DB</TableHead>
+                                        <TableHead>ALKP</TableHead>
+                                        <TableHead>SGPT</TableHead>
+                                        <TableHead>SGOT</TableHead>
+                                        <TableHead>TP</TableHead>
+                                        <TableHead>ALB</TableHead>
+                                        <TableHead>AGR</TableHead>
+                                        <TableHead>Result</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {items.slice(1).map((it) => (
+                                        <TableRow key={it.id}>
+                                          <TableCell>{new Date(it.createdAt).toLocaleString()}</TableCell>
+                                          <TableCell>{it.measurements.TB}</TableCell>
+                                          <TableCell>{it.measurements.DB}</TableCell>
+                                          <TableCell>{it.measurements.ALKP}</TableCell>
+                                          <TableCell>{it.measurements.SGPT}</TableCell>
+                                          <TableCell>{it.measurements.SGOT}</TableCell>
+                                          <TableCell>{it.measurements.TP}</TableCell>
+                                          <TableCell>{it.measurements.ALB}</TableCell>
+                                          <TableCell>{it.measurements.AGR}</TableCell>
+                                          <TableCell className="text-xs">{it.result?.prediction_label ?? it.result?.prediction ?? '-'}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

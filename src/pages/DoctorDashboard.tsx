@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSocket } from "@/hooks/useSocket";
-import { apiClient, type Appointment, type Prescription, type User, type MedicalDocument } from "@/api/client";
+import { apiClient, type Appointment, type Prescription, type User, type MedicalDocument, type LiverAssessment } from "@/api/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video, RefreshCcw, Lock, Paperclip } from "lucide-react";
+import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video, RefreshCcw, Lock, Paperclip, ChevronDown, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const formatDate = (iso?: string) => {
@@ -55,8 +56,9 @@ export default function DoctorDashboard() {
   const [confirmPassword, setConfirmPassword] = useState("");
   // Documents state
   const [documents, setDocuments] = useState<MedicalDocument[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [expandedPatients, setExpandedPatients] = useState<Set<string>>(new Set());
+  const [assessments, setAssessments] = useState<LiverAssessment[]>([]);
+  const [expandedAssessments, setExpandedAssessments] = useState<Set<string>>(new Set());
 
   const [selectedPatient, setSelectedPatient] = useState("");
   const [medication, setMedication] = useState("");
@@ -92,24 +94,83 @@ export default function DoctorDashboard() {
     return Array.from(map.values());
   }, [appointments]);
 
+  // Group documents by patient
+  const documentsByPatient = useMemo(() => {
+    const grouped = new Map<string, { patient: User | null; patientName: string; patientEmail: string; docs: MedicalDocument[] }>();
+    
+    documents.forEach((doc) => {
+      // Backend returns patientId with each document
+      const patientId = doc.patientId || 'unknown';
+      const patient = patients.find(p => p.id === patientId) || null;
+      const patientName = doc.patientName || patient?.name || 'Unknown Patient';
+      const patientEmail = doc.patientEmail || patient?.email || '';
+      
+      if (!grouped.has(patientId)) {
+        grouped.set(patientId, { patient, patientName, patientEmail, docs: [] });
+      }
+      grouped.get(patientId)!.docs.push(doc);
+    });
+    
+    return Array.from(grouped.entries()).filter(([id]) => id !== 'unknown');
+  }, [documents, patients]);
+
+  const togglePatientExpand = (patientId: string) => {
+    setExpandedPatients((prev) => {
+      const next = new Set(prev);
+      if (next.has(patientId)) {
+        next.delete(patientId);
+      } else {
+        next.add(patientId);
+      }
+      return next;
+    });
+  };
+
   const fetchDoctorData = async () => {
     try {
       setLoading(true);
-      const [apptData, prescriptionData, docs] = await Promise.all([
+      const [apptData, prescriptionData, docs, asmt] = await Promise.all([
         apiClient.getAppointments(),
         apiClient.getPrescriptions(),
         apiClient.listDocuments(),
+        apiClient.listLiverAssessments(),
       ]);
 
       setAppointments(apptData);
       setPrescriptions(prescriptionData);
       setDocuments(docs);
+      setAssessments(asmt);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast.error("Failed to load data: " + errorMessage);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Group assessments by patient
+  const assessmentsByPatient = useMemo(() => {
+    const grouped = new Map<string, { patientName: string; patientEmail: string; items: LiverAssessment[] }>();
+    assessments.forEach((a) => {
+      const pid = a.patientId || 'unknown';
+      if (!grouped.has(pid)) {
+        grouped.set(pid, { patientName: a.patientName || 'Unknown Patient', patientEmail: a.patientEmail || '', items: [] });
+      }
+      grouped.get(pid)!.items.push(a);
+    });
+    // sort each patient's items by createdAt desc
+    for (const [, v] of grouped) {
+      v.items.sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime());
+    }
+    return Array.from(grouped.entries()).filter(([id]) => id !== 'unknown');
+  }, [assessments]);
+
+  const toggleAssessmentExpand = (patientId: string) => {
+    setExpandedAssessments((prev) => {
+      const next = new Set(prev);
+      if (next.has(patientId)) next.delete(patientId); else next.add(patientId);
+      return next;
+    });
   };
 
   const updateAppointmentStatus = async (id: string, status: Appointment["status"]) => {
@@ -230,7 +291,7 @@ export default function DoctorDashboard() {
         {/* Security moved into its own tab below */}
 
         <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="appointments">
               <Calendar className="mr-2 h-4 w-4" />
               Appointments
@@ -246,6 +307,9 @@ export default function DoctorDashboard() {
             <TabsTrigger value="documents">
               <Paperclip className="mr-2 h-4 w-4" />
               Documents
+            </TabsTrigger>
+            <TabsTrigger value="health">
+              🧪 Health
             </TabsTrigger>
             <TabsTrigger value="security">
               <Lock className="mr-2 h-4 w-4" />
@@ -413,98 +477,214 @@ export default function DoctorDashboard() {
           </TabsContent>
 
           <TabsContent value="documents">
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Upload Document</CardTitle>
-                  <CardDescription>PDF, images, or Word documents up to 10MB</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <Input
-                      type="file"
-                      accept="application/pdf,image/*,.doc,.docx"
-                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                    />
-                    <Button
-                      className="w-full"
-                      disabled={!selectedFile || uploading}
-                      onClick={async () => {
-                        if (!selectedFile) return;
-                        try {
-                          setUploading(true);
-                          const uploaded = await apiClient.uploadDocument(selectedFile);
-                          if (uploaded) {
-                            toast.success('Uploaded successfully');
-                            setSelectedFile(null);
-                            const fresh = await apiClient.listDocuments();
-                            setDocuments(fresh);
-                          } else {
-                            toast.error('Upload failed');
-                          }
-                        } catch (err) {
-                          toast.error('Upload error');
-                        } finally {
-                          setUploading(false);
-                        }
-                      }}
-                    >
-                      {uploading ? 'Uploading…' : 'Upload'}
-                    </Button>
+            <Card>
+              <CardHeader>
+                <CardTitle>Patient Documents</CardTitle>
+                <CardDescription>View documents uploaded by your patients (read-only)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {documentsByPatient.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No patient documents available yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {documentsByPatient.map(([patientId, { patient, patientName, patientEmail, docs }]) => (
+                      <Collapsible
+                        key={patientId}
+                        open={expandedPatients.has(patientId)}
+                        onOpenChange={() => togglePatientExpand(patientId)}
+                      >
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-between hover:bg-accent"
+                          >
+                            <div className="flex items-center gap-3">
+                              {expandedPatients.has(patientId) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">{patientName}</span>
+                                <span className="text-xs text-muted-foreground">ID: {patientId}</span>
+                              </div>
+                              <span className="text-sm text-muted-foreground">
+                                ({docs.length} document{docs.length !== 1 ? 's' : ''})
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {patientEmail}
+                            </span>
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-2">
+                          <div className="border rounded-lg p-4 bg-muted/30">
+                            {docs.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">No documents for this patient.</p>
+                            ) : (
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>File Name</TableHead>
+                                    <TableHead>Type</TableHead>
+                                    <TableHead>Size</TableHead>
+                                    <TableHead>Uploaded</TableHead>
+                                    <TableHead>Action</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {docs.map((doc) => (
+                                    <TableRow key={doc.id}>
+                                      <TableCell className="max-w-[220px] truncate" title={doc.originalName}>
+                                        {doc.originalName}
+                                      </TableCell>
+                                      <TableCell className="text-xs">{doc.mimeType || '-'}</TableCell>
+                                      <TableCell>{(doc.size / 1024 / 1024).toFixed(2)} MB</TableCell>
+                                      <TableCell>
+                                        {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : '-'}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={async () => {
+                                            const url = await apiClient.getDocumentDownloadUrl(doc.id);
+                                            if (url) {
+                                              window.open(url, '_blank');
+                                            } else {
+                                              toast.error('Failed to get download link');
+                                            }
+                                          }}
+                                        >
+                                          View
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    ))}
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>My Documents</CardTitle>
-                  <CardDescription>Uploaded files</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {documents.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No documents uploaded yet.</p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Size</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {documents.map((doc) => (
-                          <TableRow key={doc.id}>
-                            <TableCell className="max-w-[220px] truncate" title={doc.originalName}>{doc.originalName}</TableCell>
-                            <TableCell>{doc.mimeType || '-'}</TableCell>
-                            <TableCell>{(doc.size / 1024 / 1024).toFixed(2)} MB</TableCell>
-                            <TableCell>{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : '-'}</TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  const url = await apiClient.getDocumentDownloadUrl(doc.id);
-                                  if (url) {
-                                    window.open(url, '_blank');
-                                  } else {
-                                    toast.error('Failed to get download link');
-                                  }
-                                }}
-                              >
-                                View
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+          <TabsContent value="health">
+            <Card>
+              <CardHeader>
+                <CardTitle>Patient Liver Assessments</CardTitle>
+                <CardDescription>Latest assessments per patient with prediction details</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {assessmentsByPatient.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No assessments available yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {assessmentsByPatient.map(([patientId, { patientName, patientEmail, items }]) => {
+                      const latest = items[0];
+                      return (
+                        <Collapsible
+                          key={patientId}
+                          open={expandedAssessments.has(patientId)}
+                          onOpenChange={() => toggleAssessmentExpand(patientId)}
+                        >
+                          <CollapsibleTrigger asChild>
+                            <Button variant="outline" className="w-full justify-between hover:bg-accent">
+                              <div className="flex items-center gap-3">
+                                {expandedAssessments.has(patientId) ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                                <div className="flex flex-col items-start">
+                                  <span className="font-medium">{patientName}</span>
+                                  <span className="text-xs text-muted-foreground">ID: {patientId}</span>
+                                </div>
+                                <span className="text-sm text-muted-foreground">({items.length} record{items.length !== 1 ? 's' : ''})</span>
+                              </div>
+                              <span className="text-xs text-muted-foreground">{patientEmail}</span>
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2">
+                            <div className="border rounded-lg p-4 bg-muted/30 space-y-4">
+                              <div>
+                                <div className="font-semibold mb-2">Latest Assessment ({new Date(latest.createdAt).toLocaleString()})</div>
+                                <div className="grid md:grid-cols-4 gap-2 text-sm">
+                                  <div>Age: {latest.measurements.Age}</div>
+                                  <div>TB: {latest.measurements.TB}</div>
+                                  <div>DB: {latest.measurements.DB}</div>
+                                  <div>ALKP: {latest.measurements.ALKP}</div>
+                                  <div>SGPT: {latest.measurements.SGPT}</div>
+                                  <div>SGOT: {latest.measurements.SGOT}</div>
+                                  <div>TP: {latest.measurements.TP}</div>
+                                  <div>ALB: {latest.measurements.ALB}</div>
+                                  <div>AGR: {latest.measurements.AGR}</div>
+                                  <div>Gender: {latest.measurements.Gender === 0 ? 'Male' : 'Female'}</div>
+                                </div>
+                                {latest.result && (
+                                  <div className="mt-3 text-sm">
+                                    <div><strong>Prediction:</strong> {latest.result.prediction_label ?? latest.result.prediction}</div>
+                                    {latest.result.probability && (
+                                      <div className="text-xs text-muted-foreground">Prob: no-disease {latest.result.probability.no_disease ?? '-'}, disease {latest.result.probability.disease ?? '-'}</div>
+                                    )}
+                                    {typeof latest.result.confidence === 'number' && (
+                                      <div className="text-xs text-muted-foreground">Confidence: {latest.result.confidence}</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {items.length > 1 && (
+                                <div className="mt-4">
+                                  <div className="font-medium mb-2">History</div>
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>TB</TableHead>
+                                        <TableHead>DB</TableHead>
+                                        <TableHead>ALKP</TableHead>
+                                        <TableHead>SGPT</TableHead>
+                                        <TableHead>SGOT</TableHead>
+                                        <TableHead>TP</TableHead>
+                                        <TableHead>ALB</TableHead>
+                                        <TableHead>AGR</TableHead>
+                                        <TableHead>Result</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {items.slice(1).map((it) => (
+                                        <TableRow key={it.id}>
+                                          <TableCell>{new Date(it.createdAt).toLocaleDateString()}</TableCell>
+                                          <TableCell>{it.measurements.TB}</TableCell>
+                                          <TableCell>{it.measurements.DB}</TableCell>
+                                          <TableCell>{it.measurements.ALKP}</TableCell>
+                                          <TableCell>{it.measurements.SGPT}</TableCell>
+                                          <TableCell>{it.measurements.SGOT}</TableCell>
+                                          <TableCell>{it.measurements.TP}</TableCell>
+                                          <TableCell>{it.measurements.ALB}</TableCell>
+                                          <TableCell>{it.measurements.AGR}</TableCell>
+                                          <TableCell className="text-xs">{it.result?.prediction_label ?? it.result?.prediction ?? '-'}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="security">
