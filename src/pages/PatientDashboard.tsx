@@ -9,12 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Calendar, FileText, ArrowLeft, Clock, Video, RefreshCcw, Lock, Paperclip, Stethoscope, Shield } from "lucide-react";
+import { Calendar, FileText, ArrowLeft, Clock, Video, RefreshCcw, Lock, Paperclip, Stethoscope } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import VideoCall from "@/components/VideoCall";
 import { useSocket } from "@/hooks/useSocket";
-import EncryptionKeyManager from "@/components/EncryptionKeyManager";
-import { Switch } from "@/components/ui/switch";
+import { viewDocument, openUrl, getViewActionText } from "@/utils/documentViewer";
 
 export default function PatientDashboard() {
   const { user } = useAuth();
@@ -35,7 +34,6 @@ export default function PatientDashboard() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [encryptionEnabled, setEncryptionEnabled] = useState(true);
   // Health measurements form
   const [meas, setMeas] = useState<LiverMeasurements>({
     Age: 0,
@@ -170,15 +168,15 @@ export default function PatientDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" onClick={() => navigate("/")}> 
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+            <Button variant="outline" onClick={() => navigate("/")} className="w-full sm:w-auto touch-target"> 
               <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
             </Button>
-            <h1 className="text-4xl font-bold">Patient Dashboard</h1>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Patient Dashboard</h1>
           </div>
-          <Button variant="secondary" onClick={() => window.location.reload()} className="gap-2">
+          <Button variant="secondary" onClick={() => window.location.reload()} className="gap-2 w-full sm:w-auto touch-target">
             <RefreshCcw className="h-4 w-4" /> Refresh
           </Button>
         </div>
@@ -189,14 +187,14 @@ export default function PatientDashboard() {
               <CardTitle>Your Profile</CardTitle>
               <CardDescription>Personal information and account status</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-4">
+            <CardContent className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
               <div>
                 <p className="text-sm text-muted-foreground">Name</p>
                 <p className="font-medium">{user.name || "N/A"}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Email</p>
-                <p className="font-medium break-words">{user.email}</p>
+                <p className="font-medium break-words text-sm sm:text-base">{user.email}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Phone</p>
@@ -212,43 +210,49 @@ export default function PatientDashboard() {
 
         {/* Security moved into its own tab below */}
 
-        <Tabs defaultValue="appointments" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="appointments">
-              <Calendar className="mr-2 h-4 w-4" />
-              Appointments
+        <Tabs defaultValue="appointments" value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 gap-1">
+            <TabsTrigger value="appointments" className="text-xs sm:text-sm">
+              <Calendar className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Appointments</span>
+              <span className="sm:hidden">Appts</span>
             </TabsTrigger>
-            <TabsTrigger value="video" className={incomingCall ? "bg-red-100" : ""}>
-              <Video className="mr-2 h-4 w-4" />
-              Video Call
+            <TabsTrigger value="video" className={`text-xs sm:text-sm ${incomingCall ? "bg-red-100" : ""}`}>
+              <Video className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Video Call</span>
+              <span className="sm:hidden">Video</span>
             </TabsTrigger>
-            <TabsTrigger value="prescriptions">
-              <FileText className="mr-2 h-4 w-4" />
-              Prescriptions
+            <TabsTrigger value="prescriptions" className="text-xs sm:text-sm">
+              <FileText className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Prescriptions</span>
+              <span className="sm:hidden">Rx</span>
             </TabsTrigger>
-            <TabsTrigger value="documents">
-              <Paperclip className="mr-2 h-4 w-4" />
-              Documents
+            <TabsTrigger value="documents" className="text-xs sm:text-sm">
+              <Paperclip className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Documents</span>
+              <span className="sm:hidden">Docs</span>
             </TabsTrigger>
-            <TabsTrigger value="health">
-              <Stethoscope className="mr-2 h-4 w-4"/>
-              Health
+            <TabsTrigger value="health" className="text-xs sm:text-sm">
+              <Stethoscope className="mr-0 sm:mr-2 h-4 w-4"/>
+              <span className="hidden sm:inline">Health</span>
+              <span className="sm:hidden">Health</span>
             </TabsTrigger>
-            <TabsTrigger value="security">
-              <Lock className="mr-2 h-4 w-4" />
-              Security
+            <TabsTrigger value="security" className="text-xs sm:text-sm">
+              <Lock className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Security</span>
+              <span className="sm:hidden">Secure</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="appointments">
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Book Appointment</CardTitle>
-                  <CardDescription>Schedule a consultation with a doctor</CardDescription>
+                  <CardTitle className="text-lg sm:text-xl">Book Appointment</CardTitle>
+                  <CardDescription className="text-sm">Schedule a consultation with a doctor</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={bookAppointment} className="space-y-4">
+                  <form onSubmit={bookAppointment} className="space-y-3 sm:space-y-4">
                     <div>
                       <Label>Select Doctor</Label>
                       <select
@@ -291,7 +295,7 @@ export default function PatientDashboard() {
                         placeholder="Describe your symptoms or concerns..."
                       />
                     </div>
-                    <Button type="submit" className="w-full">
+                    <Button type="submit" className="w-full touch-target">
                       <Clock className="mr-2 h-4 w-4" />
                       Book Appointment
                     </Button>
@@ -301,27 +305,27 @@ export default function PatientDashboard() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>My Appointments</CardTitle>
-                  <CardDescription>Your scheduled appointments</CardDescription>
+                  <CardTitle className="text-lg sm:text-xl">My Appointments</CardTitle>
+                  <CardDescription className="text-sm">Your scheduled appointments</CardDescription>
                 </CardHeader>
-                <CardContent className="max-h-[500px] overflow-y-auto">
-                  <div className="space-y-4">
+                <CardContent className="max-h-[400px] sm:max-h-[500px] overflow-y-auto">
+                  <div className="space-y-3 sm:space-y-4">
                     {appointments.map((apt) => (
-                      <div key={apt.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-semibold">
+                      <div key={apt.id} className="border rounded-lg p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
+                          <div className="flex-1">
+                            <div className="font-semibold text-sm sm:text-base">
                               Dr. {apt.doctor?.name || "N/A"}
                             </div>
-                            <div className="text-sm text-muted-foreground">
+                            <div className="text-xs sm:text-sm text-muted-foreground">
                               {apt.startAt ? new Date(apt.startAt).toLocaleDateString() : "N/A"} at{" "}
                               {apt.startAt ? new Date(apt.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "N/A"}
                             </div>
                             {apt.notes && (
-                              <div className="text-sm mt-2">{apt.notes}</div>
+                              <div className="text-xs sm:text-sm mt-2">{apt.notes}</div>
                             )}
                           </div>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
                             apt.status === "completed" ? "bg-green-100 text-green-800" :
                             apt.status === "confirmed" ? "bg-blue-100 text-blue-800" :
                             apt.status === "cancelled" ? "bg-red-100 text-red-800" :
@@ -341,32 +345,34 @@ export default function PatientDashboard() {
           <TabsContent value="prescriptions">
             <Card>
               <CardHeader>
-                <CardTitle>My Prescriptions</CardTitle>
-                <CardDescription>Your prescribed medications</CardDescription>
+                <CardTitle className="text-lg sm:text-xl">My Prescriptions</CardTitle>
+                <CardDescription className="text-sm">Your prescribed medications</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Doctor</TableHead>
-                      <TableHead>Medication</TableHead>
-                      <TableHead>Dosage</TableHead>
-                      <TableHead>Instructions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {prescriptions.map((presc) => (
-                      <TableRow key={presc.id}>
-                        <TableCell>{presc.createdAt ? new Date(presc.createdAt).toLocaleDateString() : "N/A"}</TableCell>
-                        <TableCell>Dr. {presc.doctor?.name || "N/A"}</TableCell>
-                        <TableCell>{presc.medication}</TableCell>
-                        <TableCell>{presc.dosage}</TableCell>
-                        <TableCell>{presc.instructions || "-"}</TableCell>
+                <div className="table-mobile-wrapper">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sm:text-sm">Date</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Doctor</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Medication</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Dosage</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Instructions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {prescriptions.map((presc) => (
+                        <TableRow key={presc.id}>
+                          <TableCell className="text-xs sm:text-sm">{presc.createdAt ? new Date(presc.createdAt).toLocaleDateString() : "N/A"}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">Dr. {presc.doctor?.name || "N/A"}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{presc.medication}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{presc.dosage}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{presc.instructions || "-"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -445,11 +451,12 @@ export default function PatientDashboard() {
           </TabsContent>
 
           <TabsContent value="documents">
+            
             <div className="grid gap-6 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Upload Document</CardTitle>
-                  <CardDescription>PDF, images, or Word documents up to 10MB</CardDescription>
+                  <CardTitle className="text-lg sm:text-xl">Upload Document</CardTitle>
+                  <CardDescription className="text-sm">PDF, images, or Word documents up to 10MB</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -459,25 +466,12 @@ export default function PatientDashboard() {
                       onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
                     />
                     
-                    {/* Encryption Toggle */}
-                    <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
-                      <div className="flex items-center gap-2">
-                        <Lock className={`w-4 h-4 ${encryptionEnabled ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
-                        <div>
-                          <Label htmlFor="encrypt-toggle" className="text-sm font-medium cursor-pointer">
-                            Encrypt Document
-                          </Label>
-                          <p className="text-xs text-muted-foreground">
-                            ChaCha20 client-side encryption
-                          </p>
-                        </div>
-                      </div>
-                      <Switch
-                        id="encrypt-toggle"
-                        checked={encryptionEnabled}
-                        onCheckedChange={setEncryptionEnabled}
-                        disabled={uploading}
-                      />
+                    {/* Encryption info (always enabled) */}
+                    <div className="flex items-center gap-2 p-3 border rounded-lg bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+                      <Lock className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      <p className="text-sm text-green-800 dark:text-green-200">
+                        All documents are automatically encrypted for security
+                      </p>
                     </div>
 
                     <Button
@@ -485,12 +479,15 @@ export default function PatientDashboard() {
                       disabled={!selectedFile || uploading}
                       onClick={async () => {
                         if (!selectedFile) return;
+                        if (!user?.id) {
+                          toast.error('User not authenticated');
+                          return;
+                        }
                         try {
                           setUploading(true);
-                          const uploaded = await apiClient.uploadDocument(selectedFile, encryptionEnabled);
+                          const uploaded = await apiClient.uploadDocument(selectedFile, user.id);
                           if (uploaded) {
-                            const encMsg = encryptionEnabled ? ' and encrypted' : '';
-                            toast.success(`Uploaded successfully${encMsg}`);
+                            toast.success('Uploaded and encrypted successfully');
                             setSelectedFile(null);
                             // Refresh document list
                             const docs = await apiClient.listDocuments();
@@ -543,13 +540,14 @@ export default function PatientDashboard() {
                             if (doc.encrypted) {
                               console.log('[View] Document is encrypted, calling downloadAndDecryptDocument');
                               try {
-                                const blob = await apiClient.downloadAndDecryptDocument(doc);
+                                if (!user?.id) {
+                                  throw new Error('User not authenticated');
+                                }
+                                const blob = await apiClient.downloadAndDecryptDocument(doc, user.id);
                                 console.log('[View] Got blob:', blob);
                                 if (blob) {
-                                  const url = URL.createObjectURL(blob);
-                                  console.log('[View] Created object URL:', url);
-                                  window.open(url, '_blank');
-                                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                                  // Use Android-compatible viewing method
+                                  viewDocument(blob, doc.originalName, doc.mimeType);
                                   toast.success('Document decrypted successfully');
                                 } else {
                                   console.error('[View] Blob is null');
@@ -564,7 +562,8 @@ export default function PatientDashboard() {
                               const url = await apiClient.getDocumentDownloadUrl(doc.id);
                               console.log('[View] Got download URL:', url);
                               if (url) {
-                                window.open(url, '_blank');
+                                // Use Android-compatible URL opening
+                                openUrl(url, doc.originalName);
                               } else {
                                 toast.error('Failed to get download link');
                               }
@@ -591,8 +590,9 @@ export default function PatientDashboard() {
                                   size="sm"
                                   variant="outline"
                                   onClick={handleView}
+                                  className="touch-target"
                                 >
-                                  View
+                                  {getViewActionText(doc.mimeType)}
                                 </Button>
                                 <Button
                                   size="sm"
@@ -811,8 +811,6 @@ export default function PatientDashboard() {
                   </div>
                 </CardContent>
               </Card>
-
-              <EncryptionKeyManager />
             </div>
           </TabsContent>
         </Tabs>

@@ -100,34 +100,34 @@ const BookAppointment = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/10">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8 max-w-4xl">
         <Button
           variant="ghost"
           onClick={() => navigate("/")}
-          className="mb-6 hover:bg-accent/10"
+          className="mb-4 sm:mb-6 hover:bg-accent/10 touch-target"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Home
         </Button>
 
-        <div className="bg-card rounded-3xl border border-border shadow-2xl overflow-hidden">
-          <div className="bg-gradient-to-r from-primary to-accent p-8 text-primary-foreground">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-background/10 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                <CalendarIcon className="w-8 h-8" />
+        <div className="bg-card rounded-2xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-primary to-accent p-4 sm:p-6 md:p-8 text-primary-foreground">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-background/10 backdrop-blur-sm rounded-xl sm:rounded-2xl flex items-center justify-center flex-shrink-0">
+                <CalendarIcon className="w-6 h-6 sm:w-8 sm:h-8" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold mb-2">Book an Appointment</h1>
-                <p className="text-primary-foreground/80">Schedule your visit with our healthcare professionals</p>
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1 sm:mb-2">Book an Appointment</h1>
+                <p className="text-sm sm:text-base text-primary-foreground/80">Schedule your visit with our healthcare professionals</p>
               </div>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-8 space-y-8">
+          <form onSubmit={handleSubmit} className="p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
             {/* Doctor Selection */}
-            <div className="space-y-3">
-              <Label htmlFor="doctor" className="flex items-center gap-2 text-lg font-semibold">
-                <User className="w-5 h-5 text-primary" />
+            <div className="space-y-2 sm:space-y-3">
+              <Label htmlFor="doctor" className="flex items-center gap-2 text-base sm:text-lg font-semibold">
+                <User className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 Select Doctor
               </Label>
               <Select
@@ -135,7 +135,7 @@ const BookAppointment = () => {
                 onValueChange={(value) => setFormData({ ...formData, doctorId: value })}
                 required
               >
-                <SelectTrigger className="h-12 text-base">
+                <SelectTrigger className="h-11 sm:h-12 text-sm sm:text-base">
                   <SelectValue placeholder="Choose your preferred doctor" />
                 </SelectTrigger>
                 <SelectContent>
@@ -155,11 +155,11 @@ const BookAppointment = () => {
               </Select>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
               {/* Date Selection */}
-              <div className="space-y-3">
-                <Label className="flex items-center gap-2 text-lg font-semibold">
-                  <CalendarIcon className="w-5 h-5 text-primary" />
+              <div className="space-y-2 sm:space-y-3">
+                <Label className="flex items-center gap-2 text-base sm:text-lg font-semibold">
+                  <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                   Appointment Date
                 </Label>
                 <Popover>
@@ -167,7 +167,7 @@ const BookAppointment = () => {
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full h-12 justify-start text-left font-normal text-base",
+                        "w-full h-11 sm:h-12 justify-start text-left font-normal text-sm sm:text-base touch-target",
                         !date && "text-muted-foreground"
                       )}
                     >
@@ -189,9 +189,9 @@ const BookAppointment = () => {
               </div>
 
               {/* Time Selection */}
-              <div className="space-y-3">
-                <Label htmlFor="time" className="flex items-center gap-2 text-lg font-semibold">
-                  <Clock className="w-5 h-5 text-primary" />
+              <div className="space-y-2 sm:space-y-3">
+                <Label htmlFor="time" className="flex items-center gap-2 text-base sm:text-lg font-semibold">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                   Appointment Time
                 </Label>
                 <Select
@@ -199,7 +199,7 @@ const BookAppointment = () => {
                   onValueChange={(value) => setFormData({ ...formData, appointment_time: value })}
                   required
                 >
-                  <SelectTrigger className="h-12 text-base">
+                  <SelectTrigger className="h-11 sm:h-12 text-sm sm:text-base">
                     <SelectValue placeholder="Select time slot" />
                   </SelectTrigger>
                   <SelectContent>
@@ -214,9 +214,9 @@ const BookAppointment = () => {
             </div>
 
             {/* Reason for Visit */}
-            <div className="space-y-3">
-              <Label htmlFor="notes" className="flex items-center gap-2 text-lg font-semibold">
-                <FileText className="w-5 h-5 text-primary" />
+            <div className="space-y-2 sm:space-y-3">
+              <Label htmlFor="notes" className="flex items-center gap-2 text-base sm:text-lg font-semibold">
+                <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 Reason for Visit
               </Label>
               <Textarea
@@ -224,26 +224,26 @@ const BookAppointment = () => {
                 placeholder="Please describe your symptoms, concerns, or reason for the appointment..."
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows={5}
-                className="text-base resize-none"
+                rows={4}
+                className="text-sm sm:text-base resize-none"
               />
-              <p className="text-sm text-muted-foreground">This helps your doctor prepare for your visit</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">This helps your doctor prepare for your visit</p>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-4 pt-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2 sm:pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => navigate("/")}
-                className="flex-1 h-12 text-base"
+                className="flex-1 h-11 sm:h-12 text-sm sm:text-base touch-target"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={loading}
-                className="flex-1 h-12 text-base bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity"
+                className="flex-1 h-11 sm:h-12 text-sm sm:text-base bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity touch-target"
               >
                 {loading ? "Booking..." : "Confirm Appointment"}
               </Button>

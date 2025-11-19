@@ -19,7 +19,11 @@ A modern, responsive healthcare platform frontend built with React, TypeScript, 
   - Video consultations
 - **📹 Video Calling**: WebRTC-powered real-time video consultations
 - **📄 Document Management**: Secure upload, storage, and sharing of medical documents
-- **💊 Prescription System**: Digital prescription creation and viewing
+- **� Automatic Encryption**: Client-side ChaCha20-Poly1305 encryption for all documents
+  - Keys automatically derived from user accounts
+  - No manual key management required
+  - Doctors can transparently access patient documents
+- **�💊 Prescription System**: Digital prescription creation and viewing
 - **📊 Health Assessments**: ML-powered liver disease risk assessment
 - **🔔 Real-time Notifications**: Socket.IO integration for instant updates
 - **🎨 Modern UI**: Beautiful, accessible components with shadcn/ui
@@ -53,22 +57,25 @@ A modern, responsive healthcare platform frontend built with React, TypeScript, 
    Create a `.env` file in the root directory:
    ```env
    # Backend API URL
-   VITE_API_URL=http://localhost:8090
+   VITE_BACKEND_URL=http://localhost:8090
 
    # Socket.IO Server URL (usually same as backend)
    VITE_SOCKET_URL=http://localhost:8090
 
+   # Encryption Salt (IMPORTANT: Change in production!)
+   # Used for automatic document encryption key derivation
+   # Keep this secret and consistent - changing it makes old documents unreadable
+   VITE_ENCRYPTION_SALT=your_unique_secret_salt_here
+
    # WebRTC Configuration (optional - will use backend defaults if not set)
-   VITE_TURN_SERVER_URL=
-   VITE_TURN_USERNAME=
-   VITE_TURN_CREDENTIAL=
+   VITE_TURN_API_URL=
+   VITE_ICE_RELAY_ONLY=false
 
    # ML Service URL
    VITE_ML_SERVICE_URL=http://localhost:5000
-
-   # App Configuration
-   VITE_APP_NAME=ArogyaNet
    ```
+
+   See `.env.example` for more details and `ENCRYPTION_SALT_CONFIG.md` for security recommendations.
 
 ## 🚀 Running the Application
 

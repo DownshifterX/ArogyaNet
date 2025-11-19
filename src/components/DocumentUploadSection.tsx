@@ -6,8 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { apiClient, type MedicalDocument } from "@/api/client";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { viewDocument, getViewActionText } from "@/utils/documentViewer";
 
 const DocumentUploadSection = () => {
   const { user } = useAuth();
@@ -17,7 +16,6 @@ const DocumentUploadSection = () => {
   const [dragActive, setDragActive] = useState(false);
   const [documents, setDocuments] = useState<MedicalDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
-  const [encryptionEnabled, setEncryptionEnabled] = useState(true);
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -107,15 +105,18 @@ const DocumentUploadSection = () => {
     setUploading(true);
 
     try {
-      const uploaded = await apiClient.uploadDocument(file, encryptionEnabled);
+      if (!user?.id) {
+        throw new Error("User not authenticated");
+      }
+
+      const uploaded = await apiClient.uploadDocument(file, user.id);
       if (!uploaded) {
         throw new Error("Upload failed");
       }
 
-      const encMsg = encryptionEnabled ? " and encrypted" : "";
       toast({ 
         title: "Upload Successful", 
-        description: `Your document has been uploaded${encMsg} and is being processed` 
+        description: "Your document has been securely uploaded and encrypted" 
       });
       setDocuments((prev) => [uploaded, ...prev]);
 
@@ -218,23 +219,17 @@ const DocumentUploadSection = () => {
             </label>
           </div>
 
-          {/* Encryption Toggle */}
-          <div className="mt-6 flex items-center justify-center gap-3 p-4 border rounded-lg bg-background/60 backdrop-blur">
-            <Lock className={`w-5 h-5 ${encryptionEnabled ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+          {/* Encryption Info */}
+          <div className="mt-6 flex items-center justify-center gap-3 p-4 border rounded-lg bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+            <Lock className="w-5 h-5 text-green-600 dark:text-green-400" />
             <div className="flex-1">
-              <Label htmlFor="encryption-toggle" className="text-sm font-medium cursor-pointer">
-                Client-Side Encryption (ChaCha20)
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Encrypt files before uploading to S3
+              <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                All documents are automatically encrypted
+              </p>
+              <p className="text-xs text-green-700 dark:text-green-300">
+                ChaCha20 client-side encryption protects your files
               </p>
             </div>
-            <Switch
-              id="encryption-toggle"
-              checked={encryptionEnabled}
-              onCheckedChange={setEncryptionEnabled}
-              disabled={uploading}
-            />
           </div>
 
           {/* Features */}
@@ -315,12 +310,13 @@ const DocumentUploadSection = () => {
                         if (doc.encrypted) {
                           e.preventDefault();
                           try {
-                            const blob = await apiClient.downloadAndDecryptDocument(doc);
+                            if (!user?.id) {
+                              throw new Error("User not authenticated");
+                            }
+                            const blob = await apiClient.downloadAndDecryptDocument(doc, user.id);
                             if (blob) {
-                              const url = URL.createObjectURL(blob);
-                              window.open(url, '_blank');
-                              // Clean up after a delay
-                              setTimeout(() => URL.revokeObjectURL(url), 60000);
+                              // Use Android-compatible viewing method
+                              viewDocument(blob, doc.originalName, doc.mimeType);
                             }
                           } catch (error) {
                             toast({

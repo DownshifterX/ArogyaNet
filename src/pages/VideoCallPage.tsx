@@ -605,9 +605,9 @@ export default function VideoCallPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
           {/* Remote Video */}
-          <Card className="relative aspect-video bg-black overflow-hidden">
+          <Card className="relative aspect-video bg-black overflow-hidden rounded-lg">
             {remoteStream ? (
               <video
                 ref={remoteVideoRef}
@@ -658,12 +658,13 @@ export default function VideoCallPage() {
         </div>
 
         {/* Call Controls */}
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-center gap-3 sm:gap-4 flex-wrap">
           <Button
             onClick={toggleAudio}
             variant={isAudioEnabled ? 'default' : 'destructive'}
             size="lg"
-            className="rounded-full w-14 h-14"
+            className="rounded-full w-12 h-12 sm:w-14 sm:h-14 touch-target"
+            aria-label={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
           >
             {isAudioEnabled ? <Mic /> : <MicOff />}
           </Button>
@@ -672,7 +673,8 @@ export default function VideoCallPage() {
             onClick={toggleVideo}
             variant={isVideoEnabled ? 'default' : 'destructive'}
             size="lg"
-            className="rounded-full w-14 h-14"
+            className="rounded-full w-12 h-12 sm:w-14 sm:h-14 touch-target"
+            aria-label={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
           >
             {isVideoEnabled ? <Video /> : <VideoOff />}
           </Button>
@@ -681,7 +683,8 @@ export default function VideoCallPage() {
             onClick={endCall}
             variant="destructive"
             size="lg"
-            className="rounded-full w-14 h-14"
+            className="rounded-full w-12 h-12 sm:w-14 sm:h-14 touch-target"
+            aria-label="End call"
           >
             <PhoneOff />
           </Button>

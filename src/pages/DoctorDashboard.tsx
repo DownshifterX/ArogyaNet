@@ -14,6 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { toast } from "sonner";
 import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video, RefreshCcw, Lock, Paperclip, ChevronDown, ChevronRight, Stethoscope } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { openUrl, getViewActionText } from "@/utils/documentViewer";
 
 const formatDate = (iso?: string) => {
   if (!iso) return "N/A";
@@ -246,15 +247,15 @@ export default function DoctorDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <Button variant="outline" onClick={() => navigate("/")}> 
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+            <Button variant="outline" onClick={() => navigate("/")} className="w-full sm:w-auto touch-target"> 
               <ArrowLeft className="mr-2 h-4 w-4" /> Back to Home
             </Button>
-            <h1 className="text-4xl font-bold">Doctor Dashboard</h1>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">Doctor Dashboard</h1>
           </div>
-          <Button variant="secondary" onClick={() => window.location.reload()} className="gap-2">
+          <Button variant="secondary" onClick={() => window.location.reload()} className="gap-2 w-full sm:w-auto touch-target">
             <RefreshCcw className="h-4 w-4" /> Refresh
           </Button>
         </div>
@@ -265,14 +266,14 @@ export default function DoctorDashboard() {
               <CardTitle>Your Profile</CardTitle>
               <CardDescription>Current practitioner information</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-4">
+            <CardContent className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
               <div>
                 <p className="text-sm text-muted-foreground">Name</p>
                 <p className="font-medium">{user.name || "N/A"}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Email</p>
-                <p className="font-medium break-words">{user.email}</p>
+                <p className="font-medium break-words text-sm sm:text-base">{user.email}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Approval Status</p>
@@ -290,31 +291,37 @@ export default function DoctorDashboard() {
 
         {/* Security moved into its own tab below */}
 
-        <Tabs defaultValue="appointments" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="appointments">
-              <Calendar className="mr-2 h-4 w-4" />
-              Appointments
+        <Tabs defaultValue="appointments" className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 gap-1">
+            <TabsTrigger value="appointments" className="text-xs sm:text-sm">
+              <Calendar className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Appointments</span>
+              <span className="sm:hidden">Appts</span>
             </TabsTrigger>
-            <TabsTrigger value="patients">
-              <Users className="mr-2 h-4 w-4" />
-              Patients
+            <TabsTrigger value="patients" className="text-xs sm:text-sm">
+              <Users className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Patients</span>
+              <span className="sm:hidden">Patients</span>
             </TabsTrigger>
-            <TabsTrigger value="prescriptions">
-              <FileText className="mr-2 h-4 w-4" />
-              Prescriptions
+            <TabsTrigger value="prescriptions" className="text-xs sm:text-sm">
+              <FileText className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Prescriptions</span>
+              <span className="sm:hidden">Rx</span>
             </TabsTrigger>
-            <TabsTrigger value="documents">
-              <Paperclip className="mr-2 h-4 w-4" />
-              Documents
+            <TabsTrigger value="documents" className="text-xs sm:text-sm">
+              <Paperclip className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Documents</span>
+              <span className="sm:hidden">Docs</span>
             </TabsTrigger>
-            <TabsTrigger value="health">
-              <Stethoscope className="mr-2 h-4 w-4"/>
-              Health
+            <TabsTrigger value="health" className="text-xs sm:text-sm">
+              <Stethoscope className="mr-0 sm:mr-2 h-4 w-4"/>
+              <span className="hidden sm:inline">Health</span>
+              <span className="sm:hidden">Health</span>
             </TabsTrigger>
-            <TabsTrigger value="security">
-              <Lock className="mr-2 h-4 w-4" />
-              Security
+            <TabsTrigger value="security" className="text-xs sm:text-sm">
+              <Lock className="mr-0 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Security</span>
+              <span className="sm:hidden">Secure</span>
             </TabsTrigger>
           </TabsList>
 
@@ -325,42 +332,44 @@ export default function DoctorDashboard() {
                 <CardDescription>View and update your patient appointments</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Start</TableHead>
-                      <TableHead>Patient</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {appointments.map((apt) => (
-                      <TableRow key={apt.id}>
-                        <TableCell>{formatDate(apt.startAt)} {apt.endAt ? `- ${formatTime(apt.startAt)}` : ''}</TableCell>
-                        <TableCell>{apt.patient?.name || "N/A"}</TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(apt.status)}`}>
-                            {apt.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Select value={apt.status} onValueChange={(value) => updateAppointmentStatus(apt.id, value as Appointment["status"]) }>
-                            <SelectTrigger className="w-40">
-                              <SelectValue placeholder="Update status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="requested">Requested</SelectItem>
-                              <SelectItem value="confirmed">Confirmed</SelectItem>
-                              <SelectItem value="completed">Completed</SelectItem>
-                              <SelectItem value="cancelled">Cancelled</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
+                <div className="table-mobile-wrapper">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sm:text-sm">Start</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Patient</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Status</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {appointments.map((apt) => (
+                        <TableRow key={apt.id}>
+                          <TableCell className="text-xs sm:text-sm">{formatDate(apt.startAt)} {apt.endAt ? `- ${formatTime(apt.startAt)}` : ''}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{apt.patient?.name || "N/A"}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${statusBadge(apt.status)}`}>
+                              {apt.status}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Select value={apt.status} onValueChange={(value) => updateAppointmentStatus(apt.id, value as Appointment["status"]) }>
+                              <SelectTrigger className="w-32 sm:w-40 text-xs sm:text-sm">
+                                <SelectValue placeholder="Update status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="requested">Requested</SelectItem>
+                                <SelectItem value="confirmed">Confirmed</SelectItem>
+                                <SelectItem value="completed">Completed</SelectItem>
+                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -372,39 +381,41 @@ export default function DoctorDashboard() {
                 <CardDescription>Your registered patients</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Total Appointments</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {patients.map((patient) => (
-                      <TableRow key={patient.id}>
-                        <TableCell>{patient.name || "N/A"}</TableCell>
-                        <TableCell>{patient.phone || "N/A"}</TableCell>
-                        <TableCell>
-                          {appointments.filter((a) => a.patient?.id === patient.id).length}
-                        </TableCell>
+                <div className="table-mobile-wrapper">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sm:text-sm">Name</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Phone</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Total Appointments</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {patients.map((patient) => (
+                        <TableRow key={patient.id}>
+                          <TableCell className="text-xs sm:text-sm">{patient.name || "N/A"}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{patient.phone || "N/A"}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">
+                            {appointments.filter((a) => a.patient?.id === patient.id).length}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="prescriptions">
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Create Prescription</CardTitle>
-                  <CardDescription>Issue a new prescription for a patient</CardDescription>
+                  <CardTitle className="text-lg sm:text-xl">Create Prescription</CardTitle>
+                  <CardDescription className="text-sm">Issue a new prescription for a patient</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={createPrescription} className="space-y-4">
+                  <form onSubmit={createPrescription} className="space-y-3 sm:space-y-4">
                     <div>
                       <Label>Patient</Label>
                       <Select value={selectedPatient} onValueChange={setSelectedPatient}>
@@ -444,30 +455,30 @@ export default function DoctorDashboard() {
                         placeholder="Additional instructions..."
                       />
                     </div>
-                    <Button type="submit" className="w-full">Create Prescription</Button>
+                    <Button type="submit" className="w-full touch-target">Create Prescription</Button>
                   </form>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Recent Prescriptions</CardTitle>
-                  <CardDescription>Recently issued prescriptions</CardDescription>
+                  <CardTitle className="text-lg sm:text-xl">Recent Prescriptions</CardTitle>
+                  <CardDescription className="text-sm">Recently issued prescriptions</CardDescription>
                 </CardHeader>
-                <CardContent className="max-h-[500px] overflow-y-auto">
-                  <div className="space-y-4">
+                <CardContent className="max-h-[400px] sm:max-h-[500px] overflow-y-auto">
+                  <div className="space-y-3 sm:space-y-4">
                     {prescriptions.map((presc) => (
-                      <div key={presc.id} className="border rounded-lg p-4">
-                        <div className="font-semibold">{presc.patient?.name || "N/A"}</div>
-                        <div className="text-sm text-muted-foreground">
+                      <div key={presc.id} className="border rounded-lg p-3 sm:p-4">
+                        <div className="font-semibold text-sm sm:text-base">{presc.patient?.name || "N/A"}</div>
+                        <div className="text-xs sm:text-sm text-muted-foreground">
                           {formatDate(presc.createdAt)}
                         </div>
-                        <div className="mt-2">
+                        <div className="mt-2 text-sm">
                           <strong>Medication:</strong> {presc.medication}
                         </div>
-                        <div><strong>Dosage:</strong> {presc.dosage}</div>
+                        <div className="text-sm"><strong>Dosage:</strong> {presc.dosage}</div>
                         {presc.instructions && (
-                          <div className="text-sm mt-2">{presc.instructions}</div>
+                          <div className="text-xs sm:text-sm mt-2">{presc.instructions}</div>
                         )}
                       </div>
                     ))}
@@ -548,16 +559,35 @@ export default function DoctorDashboard() {
                                         <Button
                                           size="sm"
                                           variant="outline"
+                                          className="touch-target"
                                           onClick={async () => {
-                                            const url = await apiClient.getDocumentDownloadUrl(doc.id);
-                                            if (url) {
-                                              window.open(url, '_blank');
-                                            } else {
-                                              toast.error('Failed to get download link');
+                                            try {
+                                              // If document is encrypted, decrypt it first
+                                              if (doc.encrypted && doc.patientId) {
+                                                const { viewDocument } = await import('@/utils/documentViewer');
+                                                const blob = await apiClient.downloadAndDecryptDocument(doc, doc.patientId);
+                                                if (blob) {
+                                                  viewDocument(blob, doc.originalName, doc.mimeType);
+                                                  toast.success('Document decrypted successfully');
+                                                } else {
+                                                  toast.error('Failed to decrypt document');
+                                                }
+                                              } else {
+                                                // Unencrypted document - use direct URL
+                                                const url = await apiClient.getDocumentDownloadUrl(doc.id);
+                                                if (url) {
+                                                  openUrl(url, doc.originalName);
+                                                } else {
+                                                  toast.error('Failed to get download link');
+                                                }
+                                              }
+                                            } catch (error) {
+                                              console.error('Document view error:', error);
+                                              toast.error(error instanceof Error ? error.message : 'Failed to view document');
                                             }
                                           }}
                                         >
-                                          View
+                                          {getViewActionText(doc.mimeType)}
                                         </Button>
                                       </TableCell>
                                     </TableRow>

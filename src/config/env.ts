@@ -29,11 +29,16 @@ if (socketUrl && !socketUrl.startsWith('http://') && !socketUrl.startsWith('http
 const turnApiUrl = import.meta.env?.VITE_TURN_API_URL as string | undefined;
 const iceRelayOnly = import.meta.env?.VITE_ICE_RELAY_ONLY === 'true';
 
+// Encryption salt - used for deriving encryption keys from user IDs
+// Change this to a unique value for your application in production
+const encryptionSalt = (import.meta.env?.VITE_ENCRYPTION_SALT as string | undefined) ?? 'arogyanet_secure_medical_platform_2025';
+
 export const env = {
   backendUrl,
   socketUrl,
   turnApiUrl,
   iceRelayOnly,
+  encryptionSalt,
 };
 
 export default env;

@@ -6,20 +6,68 @@
  * - 256-bit keys
  * - 96-bit nonces (never reused)
  * - Authenticated encryption prevents tampering
+ * - Automatic key derivation from user ID (transparent to users)
  */
 
 import { ChaCha20Poly1305 } from '@stablelib/chacha20poly1305';
 import { randomBytes } from '@stablelib/random';
+import { hash } from '@stablelib/sha256';
+import { env } from '@/config/env';
 
 const KEY_STORAGE_KEY = 'arogyanet_encryption_keys';
 const KEY_SIZE = 32; // 256 bits
 const NONCE_SIZE = 12; // 96 bits
+
+// Get encryption salt from environment variable
+// This makes keys unique to your application
+const APP_SALT = env.encryptionSalt;
 
 export interface EncryptionKey {
   id: string;
   key: Uint8Array;
   createdAt: string;
   label?: string;
+}
+
+/**
+ * Derive a deterministic encryption key from user ID
+ * This allows automatic encryption/decryption without manual key management
+ * 
+ * @param userId - The user's ID from authentication
+ * @returns 256-bit encryption key derived from userId + APP_SALT
+ */
+export function deriveKeyFromUserId(userId: string): Uint8Array {
+  if (!userId || userId.trim().length === 0) {
+    throw new Error('User ID is required for key derivation');
+  }
+  
+  // Create input: userId + salt
+  const input = userId + APP_SALT;
+  const encoder = new TextEncoder();
+  const inputBytes = encoder.encode(input);
+  
+  // Hash to get 256-bit key
+  const derivedKey = hash(inputBytes);
+  
+  return derivedKey;
+}
+
+/**
+ * Create an EncryptionKey object from user ID (for compatibility with existing code)
+ * This wraps deriveKeyFromUserId() in the EncryptionKey interface
+ * 
+ * @param userId - The user's ID from authentication
+ * @returns EncryptionKey object with derived key
+ */
+export function deriveAutoEncryptionKey(userId: string): EncryptionKey {
+  const key = deriveKeyFromUserId(userId);
+  
+  return {
+    id: `auto-${userId}`, // Deterministic key ID
+    key,
+    createdAt: new Date().toISOString(),
+    label: 'Automatic encryption (derived from account)',
+  };
 }
 
 export interface EncryptedData {
@@ -46,10 +94,29 @@ export function generateEncryptionKey(label?: string): EncryptionKey {
 }
 
 /**
+ * Check if localStorage is available and working
+ */
+export function isStorageAvailable(): boolean {
+  try {
+    const testKey = '__storage_test__';
+    localStorage.setItem(testKey, 'test');
+    localStorage.removeItem(testKey);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * Get all stored encryption keys
  */
 export function getStoredKeys(): EncryptionKey[] {
   try {
+    if (!isStorageAvailable()) {
+      console.warn('localStorage is not available (may be in private mode or storage is full)');
+      return [];
+    }
+    
     const stored = localStorage.getItem(KEY_STORAGE_KEY);
     if (!stored) return [];
     
@@ -69,6 +136,10 @@ export function getStoredKeys(): EncryptionKey[] {
  */
 export function saveEncryptionKey(key: EncryptionKey): void {
   try {
+    if (!isStorageAvailable()) {
+      throw new Error('Storage is not available. You may be in private browsing mode or storage is full. Please use regular browsing mode.');
+    }
+    
     const keys = getStoredKeys();
     const existing = keys.findIndex(k => k.id === key.id);
     
@@ -87,7 +158,10 @@ export function saveEncryptionKey(key: EncryptionKey): void {
     localStorage.setItem(KEY_STORAGE_KEY, JSON.stringify(serializable));
   } catch (error) {
     console.error('Failed to save encryption key:', error);
-    throw new Error('Failed to save encryption key');
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Failed to save encryption key. Please check your browser storage settings.');
   }
 }
 
@@ -117,10 +191,21 @@ export function getOrCreateDefaultKey(): EncryptionKey {
 /**
  * Encrypt a file using ChaCha20-Poly1305
  */
-export async function encryptFile(file: File, keyId?: string): Promise<EncryptedData> {
+export async function encryptFile(file: File, keyOrKeyId?: string | EncryptionKey): Promise<EncryptedData> {
   try {
-    // Get or create encryption key
-    const encKey = keyId ? getEncryptionKey(keyId) : getOrCreateDefaultKey();
+    // Get encryption key
+    let encKey: EncryptionKey | null;
+    
+    if (!keyOrKeyId) {
+      // No key provided, use default
+      encKey = getOrCreateDefaultKey();
+    } else if (typeof keyOrKeyId === 'string') {
+      // String keyId provided, look up stored key
+      encKey = getEncryptionKey(keyOrKeyId);
+    } else {
+      // EncryptionKey object provided directly
+      encKey = keyOrKeyId;
+    }
     
     if (!encKey) {
       throw new Error('Encryption key not found');
@@ -156,17 +241,27 @@ export async function encryptFile(file: File, keyId?: string): Promise<Encrypted
 export function decryptData(
   ciphertext: Uint8Array,
   nonce: Uint8Array,
-  keyId: string
+  keyOrKeyId: string | Uint8Array
 ): Uint8Array {
   try {
-    const encKey = getEncryptionKey(keyId);
+    let decryptionKey: Uint8Array;
     
-    if (!encKey) {
-      throw new Error(`Encryption key not found: ${keyId}`);
+    if (typeof keyOrKeyId === 'string') {
+      // String keyId provided, look up stored key
+      const encKey = getEncryptionKey(keyOrKeyId);
+      
+      if (!encKey) {
+        throw new Error(`Encryption key not found: ${keyOrKeyId}`);
+      }
+      
+      decryptionKey = encKey.key;
+    } else {
+      // Uint8Array key provided directly
+      decryptionKey = keyOrKeyId;
     }
     
     // Initialize ChaCha20-Poly1305
-    const cipher = new ChaCha20Poly1305(encKey.key);
+    const cipher = new ChaCha20Poly1305(decryptionKey);
     
     // Decrypt and verify authentication tag
     const plaintext = cipher.open(nonce, ciphertext);
@@ -198,10 +293,10 @@ export function createEncryptedBlob(
 export function decryptToBlob(
   ciphertext: Uint8Array,
   nonce: Uint8Array,
-  keyId: string,
+  keyOrKeyId: string | Uint8Array,
   originalMimeType: string
 ): Blob {
-  const plaintext = decryptData(ciphertext, nonce, keyId);
+  const plaintext = decryptData(ciphertext, nonce, keyOrKeyId);
   return new Blob([new Uint8Array(plaintext)], { type: originalMimeType });
 }
 

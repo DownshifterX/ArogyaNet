@@ -12,6 +12,7 @@ import {
   exportKey,
   importKey,
   deleteEncryptionKey,
+  isStorageAvailable,
   type EncryptionKey,
 } from "@/utils/encryption";
 import {
@@ -150,6 +151,22 @@ export default function EncryptionKeyManager() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Storage Check Warning */}
+          {!isStorageAvailable() && (
+            <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className="font-semibold text-red-900 dark:text-red-100 mb-1">
+                  Storage Not Available
+                </p>
+                <p className="text-red-800 dark:text-red-200">
+                  Your browser storage is not working. You may be in Private/Incognito mode, or storage may be full. 
+                  Please use regular browsing mode to manage encryption keys.
+                </p>
+              </div>
+            </div>
+          )}
+          
           {/* Warning */}
           <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
             <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
@@ -159,7 +176,7 @@ export default function EncryptionKeyManager() {
               </p>
               <p className="text-amber-800 dark:text-amber-200">
                 If you lose your encryption keys, you will NOT be able to decrypt your documents.
-                Export and securely back up your keys.
+                Export and securely back up your keys. On mobile, keys may be cleared if you clear browser data.
               </p>
             </div>
           </div>

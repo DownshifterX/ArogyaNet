@@ -7,6 +7,21 @@ All colors MUST be HSL.
 */
 
 @layer base {
+  /* Mobile-first responsive improvements */
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Touch-friendly sizing */
+  button, a {
+    touch-action: manipulation;
+  }
+  
   :root {
     --background: 210 40% 98%;
     --foreground: 215 25% 15%;
@@ -99,6 +114,49 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+/* Mobile-specific utility classes */
+@layer utilities {
+  /* Responsive padding utilities */
+  .container-mobile {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+  
+  /* Touch-friendly minimum sizes */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Mobile-optimized text */
+  .text-mobile-sm {
+    @apply text-sm sm:text-base;
+  }
+  
+  .text-mobile-base {
+    @apply text-base sm:text-lg;
+  }
+  
+  .text-mobile-lg {
+    @apply text-lg sm:text-xl;
+  }
+  
+  .text-mobile-xl {
+    @apply text-xl sm:text-2xl;
+  }
+  
+  .text-mobile-2xl {
+    @apply text-2xl sm:text-3xl md:text-4xl;
+  }
+  
+  /* Scrollable table wrapper */
+  .table-mobile-wrapper {
+    @apply overflow-x-auto -mx-4 sm:mx-0;
+  }
+  
+  .table-mobile-wrapper table {
+    @apply min-w-full;
   }
 }
 

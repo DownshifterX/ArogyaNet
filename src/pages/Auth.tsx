@@ -144,7 +144,7 @@ const Auth = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary to-background relative overflow-hidden px-4">
       {/* Animated Background */}
       <motion.div
         animate={{
@@ -156,7 +156,7 @@ const Auth = () => {
           repeat: Infinity,
           ease: "linear",
         }}
-        className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl"
+        className="absolute top-1/4 left-1/4 w-64 h-64 sm:w-96 sm:h-96 bg-primary/10 rounded-full blur-3xl"
       />
       <motion.div
         animate={{
@@ -168,7 +168,7 @@ const Auth = () => {
           repeat: Infinity,
           ease: "linear",
         }}
-        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl"
+        className="absolute bottom-1/4 right-1/4 w-64 h-64 sm:w-96 sm:h-96 bg-accent/10 rounded-full blur-3xl"
       />
 
       {/* Back Button */}
@@ -176,27 +176,27 @@ const Auth = () => {
         initial={{ opacity: 0, x: -20 }}
         animate={{ opacity: 1, x: 0 }}
         onClick={() => navigate("/")}
-        className="absolute top-6 left-6 flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 flex items-center gap-2 text-foreground hover:text-primary transition-colors touch-target"
       >
-        <ArrowLeft className="w-5 h-5" />
-        <span className="font-medium">Back to Home</span>
+        <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+        <span className="font-medium text-sm sm:text-base">Back to Home</span>
       </motion.button>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="w-full max-w-md p-8 m-4 bg-card/80 backdrop-blur-lg rounded-2xl border border-border shadow-2xl relative z-10"
+        className="w-full max-w-md p-6 sm:p-8 m-4 bg-card/80 backdrop-blur-lg rounded-2xl border border-border shadow-2xl relative z-10"
       >
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <Activity className="w-10 h-10 text-primary" />
-          <span className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+        <div className="flex items-center justify-center gap-2 mb-6 sm:mb-8">
+          <Activity className="w-8 h-8 sm:w-10 sm:h-10 text-primary" />
+          <span className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             ArogyaNet
           </span>
         </div>
 
-        <h2 className="text-2xl font-bold text-center mb-6">
+        <h2 className="text-xl sm:text-2xl font-bold text-center mb-4 sm:mb-6">
           {isLogin ? "Welcome Back" : "Create Account"}
         </h2>
 

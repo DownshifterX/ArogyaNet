@@ -432,45 +432,45 @@ export const apiClient = {
     }
   },
 
-  async uploadDocument(file: File, enableEncryption: boolean = true): Promise<MedicalDocument | null> {
+  async uploadDocument(file: File, userId: string): Promise<MedicalDocument | null> {
     try {
       let fileToUpload: File | Blob = file;
-      let encryptionNonce: string | undefined;
-      let encryptionKeyId: string | undefined;
       const originalSize = file.size;
       let uploadMimeType = file.type;
 
-      console.log('[Upload] Starting upload:', {
+      console.log('[Upload] Starting upload with automatic encryption:', {
         name: file.name,
         size: file.size,
         type: file.type,
-        encryption: enableEncryption,
+        userId: userId.substring(0, 8) + '...', // Log partial ID for debugging
       });
 
-      // Step 1: Encrypt file if enabled
-      if (enableEncryption) {
-        const { encryptFile, createEncryptedBlob, uint8ArrayToBase64 } = await import('@/utils/encryption');
-        
-        const encrypted = await encryptFile(file);
-        encryptionNonce = uint8ArrayToBase64(encrypted.nonce);
-        encryptionKeyId = encrypted.keyId;
-        
-        console.log('[Upload] File encrypted:', {
-          keyId: encryptionKeyId,
-          nonceLength: encrypted.nonce.length,
-          ciphertextLength: encrypted.ciphertext.length,
-          originalSize: file.size,
-        });
-        
-        // Create blob from encrypted data
-        fileToUpload = createEncryptedBlob(encrypted, 'application/octet-stream');
-        uploadMimeType = 'application/octet-stream';
-        
-        console.log('[Upload] Encrypted blob created:', {
-          size: fileToUpload.size,
-          type: uploadMimeType,
-        });
-      }
+      // Step 1: Always encrypt using automatic key derivation
+      const { encryptFile, createEncryptedBlob, uint8ArrayToBase64, deriveAutoEncryptionKey } = await import('@/utils/encryption');
+      
+      // Derive encryption key from user ID
+      const autoKey = deriveAutoEncryptionKey(userId);
+      
+      // Encrypt file with derived key
+      const encrypted = await encryptFile(file, autoKey);
+      const encryptionNonce = uint8ArrayToBase64(encrypted.nonce);
+      const encryptionKeyId = encrypted.keyId;
+      
+      console.log('[Upload] File encrypted with auto-derived key:', {
+        keyId: encryptionKeyId,
+        nonceLength: encrypted.nonce.length,
+        ciphertextLength: encrypted.ciphertext.length,
+        originalSize: file.size,
+      });
+      
+      // Create blob from encrypted data
+      fileToUpload = createEncryptedBlob(encrypted, 'application/octet-stream');
+      uploadMimeType = 'application/octet-stream';
+      
+      console.log('[Upload] Encrypted blob created:', {
+        size: fileToUpload.size,
+        type: uploadMimeType,
+      });
 
       // Step 2: Get presigned upload URL from backend
       const urlRes = await fetch(`${BACKEND_URL}/api/documents/upload-url`, {
@@ -516,7 +516,7 @@ export const apiClient = {
           originalName: file.name,
           mimeType: file.type, // Original MIME type
           size: originalSize, // Original file size
-          encrypted: enableEncryption,
+          encrypted: true, // Always encrypted with automatic key derivation
           encryptionNonce,
           encryptionKeyId,
         }),
@@ -549,7 +549,7 @@ export const apiClient = {
     }
   },
 
-  async downloadAndDecryptDocument(document: MedicalDocument): Promise<Blob | null> {
+  async downloadAndDecryptDocument(document: MedicalDocument, userId: string): Promise<Blob | null> {
     try {
       console.log('[Decrypt] Starting download for document:', {
         id: document.id,
@@ -557,6 +557,7 @@ export const apiClient = {
         mimeType: document.mimeType,
         hasNonce: !!document.encryptionNonce,
         hasKeyId: !!document.encryptionKeyId,
+        userId: userId.substring(0, 8) + '...', // Log partial ID for debugging
       });
 
       // Get download URL
@@ -574,22 +575,19 @@ export const apiClient = {
       const fileData = await fileRes.arrayBuffer();
       console.log('[Decrypt] Downloaded file size:', fileData.byteLength);
 
-      // If not encrypted, return as-is
+      // If not encrypted, return as-is (legacy documents)
       if (!document.encrypted || !document.encryptionNonce || !document.encryptionKeyId) {
         console.log('[Decrypt] File not encrypted, returning as-is');
         return new Blob([fileData], { type: document.mimeType });
       }
 
-      // Decrypt file
-      const { decryptToBlob, base64ToUint8Array, getEncryptionKey } = await import('@/utils/encryption');
+      // Decrypt file using automatic key derivation
+      const { decryptToBlob, base64ToUint8Array, deriveKeyFromUserId } = await import('@/utils/encryption');
       
-      // Check if key exists
-      const key = getEncryptionKey(document.encryptionKeyId);
-      if (!key) {
-        throw new Error(`Encryption key not found: ${document.encryptionKeyId}. Please import the key used to encrypt this file.`);
-      }
-
-      console.log('[Decrypt] Found encryption key:', key.id, key.label);
+      // Derive decryption key from user ID
+      const derivedKey = deriveKeyFromUserId(userId);
+      
+      console.log('[Decrypt] Using auto-derived key for user');
       
       const ciphertext = new Uint8Array(fileData);
       const nonce = base64ToUint8Array(document.encryptionNonce);
@@ -600,10 +598,11 @@ export const apiClient = {
         keyId: document.encryptionKeyId,
       });
 
+      // Decrypt using derived key directly
       const decryptedBlob = decryptToBlob(
         ciphertext,
         nonce,
-        document.encryptionKeyId,
+        derivedKey, // Pass Uint8Array directly instead of keyId
         document.mimeType
       );
 
