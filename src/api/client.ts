@@ -44,6 +44,9 @@ export interface MedicalDocument {
   patientName?: string | null;
   patientEmail?: string | null;
   createdAt: string;
+  encrypted?: boolean;
+  encryptionNonce?: string;
+  encryptionKeyId?: string;
 }
 
 export interface LiverMeasurements {
@@ -142,6 +145,9 @@ const parseDocument = (raw: unknown): MedicalDocument => {
     patientName: (r.patientName ?? null) as string | null,
     patientEmail: (r.patientEmail ?? null) as string | null,
     createdAt: (r.createdAt ?? new Date().toISOString()) as string,
+    encrypted: (r.encrypted ?? false) as boolean,
+    encryptionNonce: (r.encryptionNonce ?? undefined) as string | undefined,
+    encryptionKeyId: (r.encryptionKeyId ?? undefined) as string | undefined,
   };
 };
 
@@ -426,17 +432,55 @@ export const apiClient = {
     }
   },
 
-  async uploadDocument(file: File): Promise<MedicalDocument | null> {
+  async uploadDocument(file: File, enableEncryption: boolean = true): Promise<MedicalDocument | null> {
     try {
-      // Step 1: Get presigned upload URL from backend
+      let fileToUpload: File | Blob = file;
+      let encryptionNonce: string | undefined;
+      let encryptionKeyId: string | undefined;
+      const originalSize = file.size;
+      let uploadMimeType = file.type;
+
+      console.log('[Upload] Starting upload:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        encryption: enableEncryption,
+      });
+
+      // Step 1: Encrypt file if enabled
+      if (enableEncryption) {
+        const { encryptFile, createEncryptedBlob, uint8ArrayToBase64 } = await import('@/utils/encryption');
+        
+        const encrypted = await encryptFile(file);
+        encryptionNonce = uint8ArrayToBase64(encrypted.nonce);
+        encryptionKeyId = encrypted.keyId;
+        
+        console.log('[Upload] File encrypted:', {
+          keyId: encryptionKeyId,
+          nonceLength: encrypted.nonce.length,
+          ciphertextLength: encrypted.ciphertext.length,
+          originalSize: file.size,
+        });
+        
+        // Create blob from encrypted data
+        fileToUpload = createEncryptedBlob(encrypted, 'application/octet-stream');
+        uploadMimeType = 'application/octet-stream';
+        
+        console.log('[Upload] Encrypted blob created:', {
+          size: fileToUpload.size,
+          type: uploadMimeType,
+        });
+      }
+
+      // Step 2: Get presigned upload URL from backend
       const urlRes = await fetch(`${BACKEND_URL}/api/documents/upload-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
         body: JSON.stringify({
           originalName: file.name,
-          mimeType: file.type,
-          size: file.size,
+          mimeType: uploadMimeType,
+          size: fileToUpload.size,
         }),
       });
 
@@ -447,13 +491,13 @@ export const apiClient = {
 
       const { uploadUrl, s3Key } = await urlRes.json();
 
-      // Step 2: Upload directly to S3 using presigned URL
+      // Step 3: Upload directly to S3 using presigned URL
       const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: {
-          'Content-Type': file.type,
+          'Content-Type': uploadMimeType,
         },
-        body: file,
+        body: fileToUpload,
       });
 
       if (!uploadRes.ok) {
@@ -462,7 +506,7 @@ export const apiClient = {
         throw new Error(`Failed to upload to S3 (${uploadRes.status})`);
       }
 
-      // Step 3: Confirm upload with backend to save metadata
+      // Step 4: Confirm upload with backend to save metadata
       const confirmRes = await fetch(`${BACKEND_URL}/api/documents/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -470,8 +514,11 @@ export const apiClient = {
         body: JSON.stringify({
           s3Key,
           originalName: file.name,
-          mimeType: file.type,
-          size: file.size,
+          mimeType: file.type, // Original MIME type
+          size: originalSize, // Original file size
+          encrypted: enableEncryption,
+          encryptionNonce,
+          encryptionKeyId,
         }),
       });
 
@@ -499,6 +546,72 @@ export const apiClient = {
     } catch (err) {
       console.error('Error getting download URL:', err);
       return null;
+    }
+  },
+
+  async downloadAndDecryptDocument(document: MedicalDocument): Promise<Blob | null> {
+    try {
+      console.log('[Decrypt] Starting download for document:', {
+        id: document.id,
+        encrypted: document.encrypted,
+        mimeType: document.mimeType,
+        hasNonce: !!document.encryptionNonce,
+        hasKeyId: !!document.encryptionKeyId,
+      });
+
+      // Get download URL
+      const downloadUrl = await this.getDocumentDownloadUrl(document.id);
+      if (!downloadUrl) {
+        throw new Error('Failed to get download URL');
+      }
+
+      // Download file from S3
+      const fileRes = await fetch(downloadUrl);
+      if (!fileRes.ok) {
+        throw new Error('Failed to download file');
+      }
+
+      const fileData = await fileRes.arrayBuffer();
+      console.log('[Decrypt] Downloaded file size:', fileData.byteLength);
+
+      // If not encrypted, return as-is
+      if (!document.encrypted || !document.encryptionNonce || !document.encryptionKeyId) {
+        console.log('[Decrypt] File not encrypted, returning as-is');
+        return new Blob([fileData], { type: document.mimeType });
+      }
+
+      // Decrypt file
+      const { decryptToBlob, base64ToUint8Array, getEncryptionKey } = await import('@/utils/encryption');
+      
+      // Check if key exists
+      const key = getEncryptionKey(document.encryptionKeyId);
+      if (!key) {
+        throw new Error(`Encryption key not found: ${document.encryptionKeyId}. Please import the key used to encrypt this file.`);
+      }
+
+      console.log('[Decrypt] Found encryption key:', key.id, key.label);
+      
+      const ciphertext = new Uint8Array(fileData);
+      const nonce = base64ToUint8Array(document.encryptionNonce);
+      
+      console.log('[Decrypt] Decrypting:', {
+        ciphertextSize: ciphertext.length,
+        nonceSize: nonce.length,
+        keyId: document.encryptionKeyId,
+      });
+
+      const decryptedBlob = decryptToBlob(
+        ciphertext,
+        nonce,
+        document.encryptionKeyId,
+        document.mimeType
+      );
+
+      console.log('[Decrypt] Decryption successful, blob size:', decryptedBlob.size, 'type:', decryptedBlob.type);
+      return decryptedBlob;
+    } catch (err) {
+      console.error('[Decrypt] Error downloading/decrypting document:', err);
+      throw err;
     }
   },
 

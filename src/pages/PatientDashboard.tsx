@@ -9,10 +9,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Calendar, FileText, ArrowLeft, Clock, Video, RefreshCcw, Lock, Paperclip } from "lucide-react";
+import { Calendar, FileText, ArrowLeft, Clock, Video, RefreshCcw, Lock, Paperclip, Stethoscope, Shield } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import VideoCall from "@/components/VideoCall";
 import { useSocket } from "@/hooks/useSocket";
+import EncryptionKeyManager from "@/components/EncryptionKeyManager";
+import { Switch } from "@/components/ui/switch";
 
 export default function PatientDashboard() {
   const { user } = useAuth();
@@ -33,6 +35,7 @@ export default function PatientDashboard() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [encryptionEnabled, setEncryptionEnabled] = useState(true);
   // Health measurements form
   const [meas, setMeas] = useState<LiverMeasurements>({
     Age: 0,
@@ -228,7 +231,8 @@ export default function PatientDashboard() {
               Documents
             </TabsTrigger>
             <TabsTrigger value="health">
-              🩺 Health
+              <Stethoscope className="mr-2 h-4 w-4"/>
+              Health
             </TabsTrigger>
             <TabsTrigger value="security">
               <Lock className="mr-2 h-4 w-4" />
@@ -454,6 +458,28 @@ export default function PatientDashboard() {
                       accept="application/pdf,image/*,.doc,.docx"
                       onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
                     />
+                    
+                    {/* Encryption Toggle */}
+                    <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        <Lock className={`w-4 h-4 ${encryptionEnabled ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+                        <div>
+                          <Label htmlFor="encrypt-toggle" className="text-sm font-medium cursor-pointer">
+                            Encrypt Document
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            ChaCha20 client-side encryption
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        id="encrypt-toggle"
+                        checked={encryptionEnabled}
+                        onCheckedChange={setEncryptionEnabled}
+                        disabled={uploading}
+                      />
+                    </div>
+
                     <Button
                       className="w-full"
                       disabled={!selectedFile || uploading}
@@ -461,9 +487,10 @@ export default function PatientDashboard() {
                         if (!selectedFile) return;
                         try {
                           setUploading(true);
-                          const uploaded = await apiClient.uploadDocument(selectedFile);
+                          const uploaded = await apiClient.uploadDocument(selectedFile, encryptionEnabled);
                           if (uploaded) {
-                            toast.success('Uploaded successfully');
+                            const encMsg = encryptionEnabled ? ' and encrypted' : '';
+                            toast.success(`Uploaded successfully${encMsg}`);
                             setSelectedFile(null);
                             // Refresh document list
                             const docs = await apiClient.listDocuments();
@@ -504,47 +531,90 @@ export default function PatientDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {documents.map((doc) => (
-                          <TableRow key={doc.id}>
-                            <TableCell className="max-w-[220px] truncate" title={doc.originalName}>{doc.originalName}</TableCell>
-                            <TableCell>{doc.mimeType || '-'}</TableCell>
-                            <TableCell>{(doc.size / 1024 / 1024).toFixed(2)} MB</TableCell>
-                            <TableCell>{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : '-'}</TableCell>
-                            <TableCell className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  const url = await apiClient.getDocumentDownloadUrl(doc.id);
-                                  if (url) {
-                                    window.open(url, '_blank');
-                                  } else {
-                                    toast.error('Failed to get download link');
-                                  }
-                                }}
-                              >
-                                View
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={async () => {
-                                  if (confirm(`Delete ${doc.originalName}?`)) {
-                                    const success = await apiClient.deleteDocument(doc.id);
-                                    if (success) {
-                                      toast.success('Document deleted');
-                                      setDocuments(documents.filter((d) => d.id !== doc.id));
-                                    } else {
-                                      toast.error('Failed to delete');
+                        {documents.map((doc) => {
+                          const handleView = async () => {
+                            console.log('[View] Button clicked for document:', {
+                              id: doc.id,
+                              name: doc.originalName,
+                              encrypted: doc.encrypted,
+                              mimeType: doc.mimeType,
+                            });
+
+                            if (doc.encrypted) {
+                              console.log('[View] Document is encrypted, calling downloadAndDecryptDocument');
+                              try {
+                                const blob = await apiClient.downloadAndDecryptDocument(doc);
+                                console.log('[View] Got blob:', blob);
+                                if (blob) {
+                                  const url = URL.createObjectURL(blob);
+                                  console.log('[View] Created object URL:', url);
+                                  window.open(url, '_blank');
+                                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                                  toast.success('Document decrypted successfully');
+                                } else {
+                                  console.error('[View] Blob is null');
+                                  toast.error('Failed to decrypt document');
+                                }
+                              } catch (error) {
+                                console.error('[View] Decryption error:', error);
+                                toast.error(error instanceof Error ? error.message : 'Failed to decrypt document');
+                              }
+                            } else {
+                              console.log('[View] Document not encrypted, getting direct URL');
+                              const url = await apiClient.getDocumentDownloadUrl(doc.id);
+                              console.log('[View] Got download URL:', url);
+                              if (url) {
+                                window.open(url, '_blank');
+                              } else {
+                                toast.error('Failed to get download link');
+                              }
+                            }
+                          };
+
+                          return (
+                            <TableRow key={doc.id}>
+                              <TableCell className="max-w-[220px]">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate" title={doc.originalName}>{doc.originalName}</span>
+                                  {doc.encrypted && (
+                                    <span className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded whitespace-nowrap">
+                                      🔒 Encrypted
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>{doc.mimeType || '-'}</TableCell>
+                              <TableCell>{(doc.size / 1024 / 1024).toFixed(2)} MB</TableCell>
+                              <TableCell>{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : '-'}</TableCell>
+                              <TableCell className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleView}
+                                >
+                                  View
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={async () => {
+                                    if (confirm(`Delete ${doc.originalName}?`)) {
+                                      const success = await apiClient.deleteDocument(doc.id);
+                                      if (success) {
+                                        toast.success('Document deleted');
+                                        setDocuments(documents.filter((d) => d.id !== doc.id));
+                                      } else {
+                                        toast.error('Failed to delete');
+                                      }
                                     }
-                                  }
-                                }}
-                              >
-                                Delete
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                                  }}
+                                >
+                                  Delete
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   )}
@@ -677,69 +747,73 @@ export default function PatientDashboard() {
           </TabsContent>
 
           <TabsContent value="security">
-            <Card>
-              <CardHeader>
-                <CardTitle>Change Password</CardTitle>
-                <CardDescription>Update your account password</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div>
-                    <Label>Current Password</Label>
-                    <Input
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                    />
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Change Password</CardTitle>
+                  <CardDescription>Update your account password</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <Label>Current Password</Label>
+                      <Input
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label>New Password</Label>
+                      <Input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label>Confirm New Password</Label>
+                      <Input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <Label>New Password</Label>
-                    <Input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                    />
+                  <div className="mt-4">
+                    <Button
+                      onClick={async () => {
+                        if (!currentPassword || !newPassword || !confirmPassword) {
+                          toast.error('Please fill all password fields');
+                          return;
+                        }
+                        if (newPassword.length < 6) {
+                          toast.error('New password must be at least 6 characters');
+                          return;
+                        }
+                        if (newPassword !== confirmPassword) {
+                          toast.error('Passwords do not match');
+                          return;
+                        }
+                        const res = await apiClient.changePassword(currentPassword, newPassword);
+                        if (res.success) {
+                          toast.success(res.message || 'Password changed');
+                          setCurrentPassword('');
+                          setNewPassword('');
+                          setConfirmPassword('');
+                        } else {
+                          toast.error(res.message || 'Failed to change password');
+                        }
+                      }}
+                    >
+                      Update Password
+                    </Button>
                   </div>
-                  <div>
-                    <Label>Confirm New Password</Label>
-                    <Input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Button
-                    onClick={async () => {
-                      if (!currentPassword || !newPassword || !confirmPassword) {
-                        toast.error('Please fill all password fields');
-                        return;
-                      }
-                      if (newPassword.length < 6) {
-                        toast.error('New password must be at least 6 characters');
-                        return;
-                      }
-                      if (newPassword !== confirmPassword) {
-                        toast.error('Passwords do not match');
-                        return;
-                      }
-                      const res = await apiClient.changePassword(currentPassword, newPassword);
-                      if (res.success) {
-                        toast.success(res.message || 'Password changed');
-                        setCurrentPassword('');
-                        setNewPassword('');
-                        setConfirmPassword('');
-                      } else {
-                        toast.error(res.message || 'Failed to change password');
-                      }
-                    }}
-                  >
-                    Update Password
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              <EncryptionKeyManager />
+            </div>
           </TabsContent>
         </Tabs>
       </div>

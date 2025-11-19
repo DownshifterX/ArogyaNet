@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Upload, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Upload, FileText, CheckCircle, AlertCircle, Loader2, Lock, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { apiClient, type MedicalDocument } from "@/api/client";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const DocumentUploadSection = () => {
   const { user } = useAuth();
@@ -15,6 +17,7 @@ const DocumentUploadSection = () => {
   const [dragActive, setDragActive] = useState(false);
   const [documents, setDocuments] = useState<MedicalDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [encryptionEnabled, setEncryptionEnabled] = useState(true);
 
   useEffect(() => {
     const fetchDocuments = async () => {
@@ -26,11 +29,11 @@ const DocumentUploadSection = () => {
         setLoadingDocs(true);
         const docs = await apiClient.listDocuments();
         setDocuments(docs);
-      } catch (error: any) {
+      } catch (error) {
         console.error("Error loading documents:", error);
         toast({
           title: "Unable to load documents",
-          description: error.message || "Please try again later",
+          description: error instanceof Error ? error.message : "Please try again later",
           variant: "destructive",
         });
       } finally {
@@ -104,21 +107,25 @@ const DocumentUploadSection = () => {
     setUploading(true);
 
     try {
-      const uploaded = await apiClient.uploadDocument(file);
+      const uploaded = await apiClient.uploadDocument(file, encryptionEnabled);
       if (!uploaded) {
         throw new Error("Upload failed");
       }
 
-      toast({ title: "Upload Successful", description: "Your document has been uploaded and is being processed" });
+      const encMsg = encryptionEnabled ? " and encrypted" : "";
+      toast({ 
+        title: "Upload Successful", 
+        description: `Your document has been uploaded${encMsg} and is being processed` 
+      });
       setDocuments((prev) => [uploaded, ...prev]);
 
       // Redirect to dashboard based on role
       if (user?.role === 'patient') navigate('/patient-dashboard');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Upload error:', error);
       toast({
         title: "Upload Failed",
-        description: error.message || "Failed to upload document",
+        description: error instanceof Error ? error.message : "Failed to upload document",
         variant: "destructive",
       });
     } finally {
@@ -211,6 +218,25 @@ const DocumentUploadSection = () => {
             </label>
           </div>
 
+          {/* Encryption Toggle */}
+          <div className="mt-6 flex items-center justify-center gap-3 p-4 border rounded-lg bg-background/60 backdrop-blur">
+            <Lock className={`w-5 h-5 ${encryptionEnabled ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} />
+            <div className="flex-1">
+              <Label htmlFor="encryption-toggle" className="text-sm font-medium cursor-pointer">
+                Client-Side Encryption (ChaCha20)
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Encrypt files before uploading to S3
+              </p>
+            </div>
+            <Switch
+              id="encryption-toggle"
+              checked={encryptionEnabled}
+              onCheckedChange={setEncryptionEnabled}
+              disabled={uploading}
+            />
+          </div>
+
           {/* Features */}
           <div className="grid md:grid-cols-3 gap-6 mt-8">
             <motion.div
@@ -221,11 +247,11 @@ const DocumentUploadSection = () => {
               className="text-center"
             >
               <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                <CheckCircle className="w-6 h-6 text-primary" />
+                <Shield className="w-6 h-6 text-primary" />
               </div>
-              <h4 className="font-semibold mb-1">Secure Storage</h4>
+              <h4 className="font-semibold mb-1">ChaCha20 Encryption</h4>
               <p className="text-sm text-muted-foreground">
-                End-to-end encrypted storage
+                Client-side encryption before upload
               </p>
             </motion.div>
 
@@ -284,22 +310,57 @@ const DocumentUploadSection = () => {
                     {documents.map((doc) => {
                       const created = doc.createdAt ? new Date(doc.createdAt) : null;
                       const sizeMb = ((doc.size ?? 0) / 1024 / 1024).toFixed(2);
+                      
+                      const handleView = async (e: React.MouseEvent) => {
+                        if (doc.encrypted) {
+                          e.preventDefault();
+                          try {
+                            const blob = await apiClient.downloadAndDecryptDocument(doc);
+                            if (blob) {
+                              const url = URL.createObjectURL(blob);
+                              window.open(url, '_blank');
+                              // Clean up after a delay
+                              setTimeout(() => URL.revokeObjectURL(url), 60000);
+                            }
+                          } catch (error) {
+                            toast({
+                              title: "Decryption Failed",
+                              description: error instanceof Error ? error.message : "Failed to decrypt document",
+                              variant: "destructive",
+                            });
+                          }
+                        }
+                      };
+                      
                       return (
                         <li key={doc.id} className="flex items-center justify-between gap-4 border border-border/60 rounded-lg p-4 hover:border-primary/40 transition-colors">
                           <div className="flex items-center gap-3">
                             <FileText className="w-5 h-5 text-primary" />
                             <div>
-                              <p className="font-medium">{doc.originalName}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{doc.originalName}</p>
+                                {doc.encrypted && (
+                                  <span className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded">
+                                    🔒 Encrypted
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs text-muted-foreground">
                                 {(created && !Number.isNaN(created.getTime()) ? created.toLocaleString() : "Unknown date")} &bull; {sizeMb} MB
                               </p>
                             </div>
                           </div>
-                          <Button asChild variant="outline" size="sm">
-                            <a href={doc.url} target="_blank" rel="noreferrer">
+                          {doc.encrypted ? (
+                            <Button variant="outline" size="sm" onClick={handleView}>
                               View
-                            </a>
-                          </Button>
+                            </Button>
+                          ) : (
+                            <Button asChild variant="outline" size="sm">
+                              <a href={doc.url} target="_blank" rel="noreferrer">
+                                View
+                              </a>
+                            </Button>
+                          )}
                         </li>
                       );
                     })}

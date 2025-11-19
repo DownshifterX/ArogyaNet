@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video, RefreshCcw, Lock, Paperclip, ChevronDown, ChevronRight } from "lucide-react";
+import { Calendar, Users, FileText, ArrowLeft, AlertTriangle, Video, RefreshCcw, Lock, Paperclip, ChevronDown, ChevronRight, Stethoscope } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const formatDate = (iso?: string) => {
@@ -309,7 +309,8 @@ export default function DoctorDashboard() {
               Documents
             </TabsTrigger>
             <TabsTrigger value="health">
-              🧪 Health
+              <Stethoscope className="mr-2 h-4 w-4"/>
+              Health
             </TabsTrigger>
             <TabsTrigger value="security">
               <Lock className="mr-2 h-4 w-4" />

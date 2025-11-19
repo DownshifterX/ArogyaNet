@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Users, Calendar, FileText, ArrowLeft, Shield, RefreshCcw, Lock, ChevronDown, ChevronRight } from "lucide-react";
+import { Users, Calendar, FileText, ArrowLeft, Shield, RefreshCcw, Lock, ChevronDown, ChevronRight, Stethoscope } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function AdminPanel() {
@@ -236,6 +236,7 @@ export default function AdminPanel() {
               Prescriptions
             </TabsTrigger>
             <TabsTrigger value="health">
+              <Stethoscope className="mr-2 h-4 w-4"/>
               Health
             </TabsTrigger>
             <TabsTrigger value="security">
